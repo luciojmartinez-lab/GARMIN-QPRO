@@ -324,7 +324,7 @@ No incluir cabecera en la línea lista para pegar.
 
 # 9. Formato TSV
 
-- Separador de columnas: tabulador.
+- Una fila de 25 columnas contiene exactamente 24 tabuladores. No se añade ningún separador después de la columna 25. Si la columna 25 está vacía, la línea termina necesariamente con el tabulador estructural que separa las columnas 24 y 25.
 - Separador de filas: salto de línea.
 - Coma decimal.
 - Sin tabla Markdown.
