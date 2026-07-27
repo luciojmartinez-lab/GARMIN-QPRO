@@ -183,7 +183,7 @@ Regla contextual:
 
 ```text
 CAL, CLP, ENT, CAR, SER, REC, TEC, TEF, MUL, CMP, CMF, EST,
-FIN, FPN, AQG, PLY, COM, TST, CAM, FLK, BIC, PES, BMD,
+FIN, FPN, AQG, PLY, TST, CAM, FLK, BIC, PES, BMD,
 MOV, MOF, ESC, ESF, CIR
 ```
 
