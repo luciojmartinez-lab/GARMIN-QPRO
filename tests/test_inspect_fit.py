@@ -99,13 +99,100 @@ def test_activity_name_is_not_invented_from_sport() -> None:
     source = _source()
     decoded = _decoded(
         source,
-        messages={"session": [{"sport": "running", "sub_sport": "generic"}]},
+        messages={
+            "session": [
+                {
+                    "sport_profile_name": "Carrera",
+                    "sport": "running",
+                    "sub_sport": "generic",
+                }
+            ]
+        },
     )
 
     output = inspect_fit.render_decoded_fit(source, decoded)
 
     assert "Nombre Garmin: no encontrado en campos explicitos" in output
     assert "Nombre Garmin: running" not in output
+    assert "Nombre Garmin: Carrera" not in output
+    assert "Perfil deportivo Garmin: Carrera" in output
+
+
+def test_workout_name_has_priority_over_generic_sport_profile() -> None:
+    source = _source()
+    decoded = _decoded(
+        source,
+        messages={
+            "session": [
+                {
+                    "sport_profile_name": "Carrera",
+                    "sport": "running",
+                }
+            ],
+            "workout": [{"workout_name": "EB0 - Cal. Estadio"}],
+        },
+    )
+
+    output = inspect_fit.render_decoded_fit(source, decoded)
+
+    assert "Nombre Garmin: EB0 - Cal. Estadio" in output
+    assert "Campo nombre Garmin: workout.workout_name" in output
+    assert "Perfil deportivo Garmin: Carrera" in output
+
+
+@pytest.mark.parametrize(
+    "expected_name",
+    [
+        "EB0 - Cal. Estadio",
+        "EB1 - Carrera - 1",
+        "EB0 - Vuelta a la calma",
+    ],
+)
+def test_expected_real_names_are_detected_from_workout(
+    expected_name: str,
+) -> None:
+    source = _source()
+    decoded = _decoded(
+        source,
+        messages={
+            "session": [{"sport_profile_name": "Carrera"}],
+            "workout": [
+                {
+                    "wkt_name": (
+                        expected_name,
+                        "",
+                        "perfil generico ignorado",
+                    )
+                }
+            ],
+        },
+    )
+
+    assert inspect_fit.find_activity_name(decoded) == (
+        expected_name,
+        "workout.workout_name",
+    )
+
+
+@pytest.mark.parametrize("session_name", ["running", "Carrera"])
+def test_session_name_matching_sport_or_profile_is_rejected(
+    session_name: str,
+) -> None:
+    source = _source()
+    decoded = _decoded(
+        source,
+        messages={
+            "session": [
+                {
+                    "name": session_name,
+                    "sport": "running",
+                    "sport_profile_name": "Carrera",
+                }
+            ]
+        },
+    )
+
+    assert inspect_fit.find_activity_name(decoded) is None
 
 
 def test_multiple_zip_inputs_are_processed(monkeypatch) -> None:

@@ -107,6 +107,12 @@ def _display_value(value: Any) -> str | None:
         text = value.decode("utf-8", errors="replace").strip("\x00 ")
     elif isinstance(value, str):
         text = value.strip()
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            display_value = _display_value(item)
+            if display_value is not None:
+                return display_value
+        return None
     else:
         return None
     return _safe_text(text) if text else None
@@ -138,21 +144,53 @@ def _find_field(
 
 
 def find_activity_name(decoded: DecodedFit) -> tuple[str, str] | None:
-    """Find an explicit Garmin activity name without falling back to sport."""
+    """Find an explicit activity name using the required closed priority."""
 
-    all_types = tuple(decoded.messages)
-    explicit = _find_field(
-        decoded,
-        ("activity_name", "workout_name", "sport_profile_name"),
-        all_types,
+    ordered_locations = (
+        ("workout", "workout_name", "workout.workout_name"),
+        ("workout", "wkt_name", "workout.workout_name"),
+        ("workout", "name", "workout.name"),
+        ("activity", "activity_name", "activity.activity_name"),
+        ("activity", "name", "activity.name"),
+        ("activity", "title", "activity.title"),
+        ("session", "activity_name", "session.activity_name"),
+        ("session", "name", "session.name"),
     )
-    if explicit is not None:
-        return explicit
-    return _find_field(
+    sport, _ = find_sport(decoded)
+    sport_profile = find_sport_profile(decoded)
+    excluded_session_names = {
+        value.casefold()
+        for value in (sport, sport_profile)
+        if value is not None
+    }
+
+    for message_type, field_name, logical_location in ordered_locations:
+        found = _find_field(
+            decoded,
+            (field_name,),
+            (message_type,),
+        )
+        if found is None:
+            continue
+        if (
+            message_type == "session"
+            and field_name == "name"
+            and found[0].casefold() in excluded_session_names
+        ):
+            continue
+        return found[0], logical_location
+    return None
+
+
+def find_sport_profile(decoded: DecodedFit) -> str | None:
+    """Return the Garmin sport profile without treating it as activity name."""
+
+    profile = _find_field(
         decoded,
-        ("name", "title"),
-        ("workout", "session", "activity", "sport"),
+        ("sport_profile_name",),
+        ("session",),
     )
+    return profile[0] if profile is not None else None
 
 
 def find_sport(decoded: DecodedFit) -> tuple[str | None, str | None]:
@@ -266,6 +304,7 @@ def render_decoded_fit(source: FitSource, decoded: DecodedFit) -> str:
     """Render one decoded FIT with a compact summary and sanitized detail."""
 
     name = find_activity_name(decoded)
+    sport_profile = find_sport_profile(decoded)
     sport, sub_sport = find_sport(decoded)
     counts = {
         message_type: len(decoded.get_messages(message_type))
@@ -281,10 +320,16 @@ def render_decoded_fit(source: FitSource, decoded: DecodedFit) -> str:
         f"SHA-256: {source.sha256}",
         f"CRC comprobado: {'si' if decoded.crc_checked else 'no'}",
         (
-            f"Nombre Garmin: {name[0]} [{name[1]}]"
+            f"Nombre Garmin: {name[0]}"
             if name is not None
             else "Nombre Garmin: no encontrado en campos explicitos"
         ),
+        (
+            f"Campo nombre Garmin: {name[1]}"
+            if name is not None
+            else "Campo nombre Garmin: no disponible"
+        ),
+        f"Perfil deportivo Garmin: {sport_profile or 'no encontrado'}",
         f"Deporte: {sport or 'no encontrado'}",
         f"Subtipo: {sub_sport or 'no encontrado'}",
         "Conteos: "
