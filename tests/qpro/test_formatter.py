@@ -8,6 +8,7 @@ from garmin_qpro.qpro.formatter import (
     format_decimal,
     format_text_decimal,
     format_text_integer,
+    format_text_pace,
 )
 
 
@@ -21,6 +22,12 @@ def test_decimal_formatters_use_decimal_comma() -> None:
     assert format_decimal(12.345, 2) == "12,35"
     assert format_text_decimal(0, 2) == "'0,00"
     assert format_text_decimal(8.8, 1, width=2) == "'08,8"
+
+
+def test_pace_formatter_uses_minutes_seconds_and_carry() -> None:
+    assert format_text_pace(435) == "'07,15"
+    assert format_text_pace(847) == "'14,07"
+    assert format_text_pace(59.6) == "'01,00"
 
 
 def test_formatters_do_not_use_thousands_separators() -> None:
@@ -40,6 +47,7 @@ def test_empty_or_formatted_preserves_missing_values() -> None:
         format_text_integer,
         partial(format_decimal, decimals=2),
         partial(format_text_decimal, decimals=2),
+        format_text_pace,
     ],
 )
 def test_boolean_values_are_rejected(formatter) -> None:
@@ -54,6 +62,7 @@ def test_boolean_values_are_rejected(formatter) -> None:
         format_text_integer,
         partial(format_decimal, decimals=2),
         partial(format_text_decimal, decimals=2),
+        format_text_pace,
     ],
 )
 def test_non_finite_values_are_rejected(formatter, value: float) -> None:
@@ -67,8 +76,14 @@ def test_non_finite_values_are_rejected(formatter, value: float) -> None:
         format_text_integer,
         partial(format_decimal, decimals=2),
         partial(format_text_decimal, decimals=2),
+        format_text_pace,
     ],
 )
 def test_none_is_not_implicitly_zero(formatter) -> None:
     with pytest.raises(TypeError):
         formatter(None)
+
+
+def test_pace_rejects_negative_values() -> None:
+    with pytest.raises(ValueError):
+        format_text_pace(-1)

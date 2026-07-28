@@ -75,6 +75,20 @@ def format_text_decimal(
     return f"'{formatted}"
 
 
+def format_text_pace(seconds_per_km: int | float) -> str:
+    """Format pace seconds per kilometer as apostrophe-prefixed mm,ss text."""
+
+    rounded_seconds = _as_finite_decimal(seconds_per_km).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    if rounded_seconds < 0:
+        raise ValueError("seconds_per_km must not be negative")
+
+    total_seconds = int(rounded_seconds)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"'{minutes:02d},{seconds:02d}"
+
+
 def empty_or_formatted(
     value: T | None,
     formatter: Callable[[T], str],
