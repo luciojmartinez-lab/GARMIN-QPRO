@@ -8,13 +8,21 @@ from .activity_metadata import (
 )
 from .decoder import InvalidFitError, decode_fit
 from .models import DecodedFit
+from .running_metrics import (
+    RunningMetricsRaw,
+    derive_moving_time_from_records,
+    extract_running_metrics,
+)
 
 __all__ = [
     "ActivityContext",
     "ActivityMetadata",
     "DecodedFit",
     "InvalidFitError",
+    "RunningMetricsRaw",
     "decode_fit",
+    "derive_moving_time_from_records",
+    "extract_running_metrics",
     "extract_activity_metadata",
     "resolve_decoded_activity",
 ]
