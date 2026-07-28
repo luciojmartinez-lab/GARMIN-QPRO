@@ -3,17 +3,22 @@ from pathlib import Path
 
 import pytest
 
+import garmin_qpro
 from garmin_qpro.conversion import (
+    ActivityConversionResult,
     ActivityRequiresChoiceError,
     MultipleFitSourcesError,
-    RunningConversionResult,
-    UnsupportedActivityFamilyError,
     convert_decoded_activity,
     convert_input_path,
 )
+from garmin_qpro.fit.force_metrics import ForceMetricsRaw
 from garmin_qpro.fit.models import DecodedFit
+from garmin_qpro.fit.running_metrics import RunningMetricsRaw
 from garmin_qpro.input.sources import FitSource, UnsupportedInputError
-from garmin_qpro.qpro.formulas import build_vmed_ms_formula
+from garmin_qpro.qpro.formulas import (
+    build_vmax_ms_formula,
+    build_vmed_ms_formula,
+)
 
 
 def _source(
@@ -60,6 +65,24 @@ def _session(**overrides):
     return values
 
 
+def _force_session(**overrides):
+    values = {
+        "message_index": 0,
+        "sport_profile_name": "Fuerza",
+        "sport": "training",
+        "sub_sport": "strength_training",
+        "total_timer_time": 1663.291,
+        "total_elapsed_time": 1701.977,
+        "avg_heart_rate": 121,
+        "max_heart_rate": 146,
+        "total_training_effect": 3.0,
+        "total_anaerobic_training_effect": 2.3,
+        "training_load_peak": 93.91545104980469,
+    }
+    values.update(overrides)
+    return values
+
+
 def _decoded(
     *,
     source: FitSource | None = None,
@@ -93,7 +116,8 @@ def test_conversion_integrates_resolution_metrics_row_and_tsv() -> None:
 
     result = convert_decoded_activity(decoded, row_number=23)
 
-    assert isinstance(result, RunningConversionResult)
+    assert isinstance(result, ActivityConversionResult)
+    assert isinstance(result.metrics, RunningMetricsRaw)
     assert result.source_name == source.source_name
     assert result.container_name == source.container_name
     assert result.member_path == source.member_path
@@ -145,6 +169,26 @@ def test_explicit_key_takes_precedence() -> None:
 
     assert result.activity_context.resolution.qpro_key == "CAL"
     assert result.row.get("CODIGO") == "CAL"
+
+
+def test_explicit_force_key_takes_precedence() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "workout": [_workout("EB1 - Carrera - 1")],
+                "session": [_force_session()],
+            }
+        ),
+        row_number=36,
+        explicit_qpro_key="CMF",
+    )
+
+    assert result.activity_context.resolution.qpro_key == "CMF"
+    assert result.activity_context.resolution.resolution_source == (
+        "explicit_qpro_key"
+    )
+    assert isinstance(result.metrics, ForceMetricsRaw)
+    assert result.row.get("CODIGO") == "CMF"
 
 
 def test_cal_special_rule_is_applied() -> None:
@@ -228,19 +272,114 @@ def test_unresolved_activity_requires_choice() -> None:
     assert exc_info.value.reason
 
 
-def test_force_activity_does_not_build_fictional_row() -> None:
-    decoded = _decoded(messages={"session": [_session(sport_profile_name="Fuerza")]})
+@pytest.mark.parametrize(
+    "workout_name",
+    [
+        "EB9 - Salto de altura - Competic",
+        "EB9 - Triple Salto - Competicion",
+    ],
+)
+def test_confirmed_eb9_workouts_use_force_conversion(
+    workout_name: str,
+) -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "workout": [_workout(workout_name)],
+                "session": [_force_session()],
+            }
+        ),
+        row_number=36,
+    )
 
-    with pytest.raises(UnsupportedActivityFamilyError) as exc_info:
-        convert_decoded_activity(
-            decoded,
-            row_number=36,
-            explicit_qpro_key="CMF",
-        )
+    assert isinstance(result, ActivityConversionResult)
+    assert isinstance(result.metrics, ForceMetricsRaw)
+    assert result.activity_context.resolution.qpro_key == "CMF"
+    assert result.activity_context.resolution.resolution_source == (
+        "workout_name"
+    )
+    assert result.row.get("CODIGO") == "CMF"
+    assert result.row.get("PPME") == "'121"
+    assert result.row.get("PPMAX") == "'146"
+    assert result.row.get("MIN") == "'028"
+    assert result.row.get("AER") == "3,0"
+    assert result.row.get("ANA") == "2,3"
+    assert result.row.get("CARGA") == "'094"
 
-    assert exc_info.value.source is decoded.source
-    assert exc_info.value.qpro_key == "CMF"
-    assert exc_info.value.family.value == "FORCE"
+
+def test_unknown_eb9_workout_still_requires_choice() -> None:
+    decoded = _decoded(
+        messages={
+            "workout": [_workout("EB9 - Competicion desconocida")],
+            "session": [_force_session()],
+        }
+    )
+
+    with pytest.raises(ActivityRequiresChoiceError):
+        convert_decoded_activity(decoded, row_number=36)
+
+
+def test_force_uses_timer_time_and_session_training_load_only() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "session": [
+                    _force_session(
+                        total_timer_time=90.0,
+                        total_elapsed_time=3600.0,
+                        training_load_peak=12.5,
+                    )
+                ],
+                "set": [
+                    {
+                        "set_type": "active",
+                        "weight": 999.0,
+                        "repetitions": 100,
+                    }
+                ],
+            }
+        ),
+        row_number=36,
+        explicit_qpro_key="CMF",
+    )
+
+    assert result.row.get("MIN") == "'002"
+    assert result.row.get("CARGA") == "'013"
+
+
+def test_force_elapsed_time_does_not_replace_missing_timer_time() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "session": [
+                    _force_session(
+                        total_timer_time=None,
+                        total_elapsed_time=3600.0,
+                    )
+                ]
+            }
+        ),
+        row_number=36,
+        explicit_qpro_key="CMF",
+    )
+
+    assert result.metrics.timer_time_s is None
+    assert result.metrics.elapsed_time_s == 3600.0
+    assert result.row.get("MIN") == ""
+
+
+def test_force_result_uses_received_row_and_current_schema() -> None:
+    result = convert_decoded_activity(
+        _decoded(messages={"session": [_force_session()]}),
+        row_number=36,
+        explicit_qpro_key="CMF",
+    )
+
+    assert result.row.get("VMED_M_S") == build_vmed_ms_formula(36)
+    assert result.row.get("VMAX_M_S") == build_vmax_ms_formula(36)
+    assert len(result.row.as_tuple()) == 23
+    assert result.tsv.count("\t") == 22
+    assert result.tsv.split("\t")[-1] == result.row.get("OVM")
 
 
 def test_unknown_explicit_key_is_rejected() -> None:
@@ -318,6 +457,38 @@ def test_zip_with_single_source_is_converted(monkeypatch) -> None:
     assert result.member_path == "dir/activity.fit"
 
 
+def test_input_path_converts_one_force_source(monkeypatch) -> None:
+    source = _source(
+        "strength.fit",
+        container="strength.zip",
+        member="strength.fit",
+    )
+    monkeypatch.setattr(
+        "garmin_qpro.conversion.load_fit_sources",
+        lambda path: (source,),
+    )
+    monkeypatch.setattr(
+        "garmin_qpro.conversion.decode_fit",
+        lambda fit_source, *, verify_crc=True: _decoded(
+            source=fit_source,
+            messages={
+                "workout": [
+                    _workout("EB9 - Salto de altura - Competic")
+                ],
+                "session": [_force_session()],
+            },
+            crc_checked=verify_crc,
+        ),
+    )
+
+    result = convert_input_path(Path("strength.zip"), row_number=36)
+
+    assert isinstance(result, ActivityConversionResult)
+    assert isinstance(result.metrics, ForceMetricsRaw)
+    assert result.activity_context.resolution.qpro_key == "CMF"
+    assert result.row.get("CARGA") == "'094"
+
+
 def test_multiple_fit_sources_are_rejected(monkeypatch) -> None:
     sources = (_source("a.fit"), _source("b.fit"))
     monkeypatch.setattr(
@@ -355,3 +526,15 @@ def test_loader_and_decoder_errors_are_propagated(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="invalid fit"):
         convert_input_path(Path("bad.fit"), row_number=23)
+
+
+def test_public_api_exposes_only_the_general_result() -> None:
+    old_result_name = "Running" + "ConversionResult"
+    old_error_name = "Unsupported" + "ActivityFamilyError"
+
+    assert garmin_qpro.ActivityConversionResult is ActivityConversionResult
+    assert "ActivityConversionResult" in garmin_qpro.__all__
+    assert not hasattr(garmin_qpro, old_result_name)
+    assert not hasattr(garmin_qpro, old_error_name)
+    assert old_result_name not in garmin_qpro.__all__
+    assert old_error_name not in garmin_qpro.__all__

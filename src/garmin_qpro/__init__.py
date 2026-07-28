@@ -1,19 +1,17 @@
 """GARMIN-QPRO package."""
 
 from .conversion import (
+    ActivityConversionResult,
     ActivityRequiresChoiceError,
     MultipleFitSourcesError,
-    RunningConversionResult,
-    UnsupportedActivityFamilyError,
     convert_decoded_activity,
     convert_input_path,
 )
 
 __all__ = [
+    "ActivityConversionResult",
     "ActivityRequiresChoiceError",
     "MultipleFitSourcesError",
-    "RunningConversionResult",
-    "UnsupportedActivityFamilyError",
     "convert_decoded_activity",
     "convert_input_path",
 ]

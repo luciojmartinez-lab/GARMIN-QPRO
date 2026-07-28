@@ -1,4 +1,4 @@
-"""Convert one decoded running FIT activity into a Quattro Pro TSV row."""
+"""Convert one decoded FIT activity into a Quattro Pro TSV row."""
 
 from __future__ import annotations
 
@@ -10,12 +10,17 @@ from garmin_qpro.fit.activity_metadata import (
     resolve_decoded_activity,
 )
 from garmin_qpro.fit.decoder import decode_fit
+from garmin_qpro.fit.force_metrics import (
+    ForceMetricsRaw,
+    extract_force_metrics,
+)
 from garmin_qpro.fit.models import DecodedFit
 from garmin_qpro.fit.running_metrics import (
     RunningMetricsRaw,
     extract_running_metrics,
 )
 from garmin_qpro.input.sources import FitSource, load_fit_sources
+from garmin_qpro.qpro.force_row import build_force_metrics_row
 from garmin_qpro.qpro.row import QProRow
 from garmin_qpro.qpro.rows import QProFamily, family_for_key
 from garmin_qpro.qpro.running_row import build_running_row
@@ -23,15 +28,15 @@ from garmin_qpro.qpro.tsv import row_to_tsv
 
 
 @dataclass(frozen=True, slots=True)
-class RunningConversionResult:
-    """Complete result for one running-family activity conversion."""
+class ActivityConversionResult:
+    """Complete result for one activity conversion."""
 
     source_name: str
     container_name: str | None
     member_path: str | None
     sha256: str
     activity_context: ActivityContext
-    metrics: RunningMetricsRaw
+    metrics: RunningMetricsRaw | ForceMetricsRaw
     row: QProRow
     tsv: str
     decoder_errors: tuple[object, ...]
@@ -53,25 +58,6 @@ class ActivityRequiresChoiceError(ValueError):
         self.qpro_key = activity_context.resolution.qpro_key
         self.reason = reason
         super().__init__(reason)
-
-
-class UnsupportedActivityFamilyError(ValueError):
-    """Raised when a resolved activity family is not supported here."""
-
-    def __init__(
-        self,
-        *,
-        source: FitSource,
-        activity_context: ActivityContext,
-        family: QProFamily,
-    ) -> None:
-        self.source = source
-        self.activity_context = activity_context
-        self.qpro_key = activity_context.resolution.qpro_key
-        self.family = family
-        super().__init__(
-            f"Activity family is not supported by running conversion: {family.value}"
-        )
 
 
 class MultipleFitSourcesError(ValueError):
@@ -99,8 +85,8 @@ def convert_decoded_activity(
     *,
     row_number: int,
     explicit_qpro_key: str | None = None,
-) -> RunningConversionResult:
-    """Convert a decoded running activity into one immutable QPro TSV row."""
+) -> ActivityConversionResult:
+    """Convert a decoded activity into one immutable QPro TSV row."""
 
     if not isinstance(decoded, DecodedFit):
         raise TypeError("decoded must be a DecodedFit")
@@ -121,17 +107,24 @@ def convert_decoded_activity(
         )
 
     family = family_for_key(resolution.qpro_key)
-    if family is QProFamily.FORCE:
-        raise UnsupportedActivityFamilyError(
-            source=decoded.source,
-            activity_context=activity_context,
-            family=family,
+    if family is QProFamily.RUNNING:
+        metrics: RunningMetricsRaw | ForceMetricsRaw = (
+            extract_running_metrics(
+                decoded,
+                qpro_key=resolution.qpro_key,
+            )
+        )
+        row = build_running_row(resolution.qpro_key, row_number, metrics)
+    else:
+        metrics = extract_force_metrics(decoded)
+        row = build_force_metrics_row(
+            resolution.qpro_key,
+            row_number,
+            metrics,
         )
 
-    metrics = extract_running_metrics(decoded, qpro_key=resolution.qpro_key)
-    row = build_running_row(resolution.qpro_key, row_number, metrics)
     tsv = row_to_tsv(row)
-    return RunningConversionResult(
+    return ActivityConversionResult(
         source_name=decoded.source.source_name,
         container_name=decoded.source.container_name,
         member_path=decoded.source.member_path,
@@ -151,7 +144,7 @@ def convert_input_path(
     row_number: int,
     explicit_qpro_key: str | None = None,
     verify_crc: bool = True,
-) -> RunningConversionResult:
+) -> ActivityConversionResult:
     """Load, decode, and convert one FIT source from a FIT or ZIP path."""
 
     _validate_row_number(row_number)
