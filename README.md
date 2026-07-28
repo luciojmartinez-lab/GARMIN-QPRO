@@ -84,5 +84,80 @@ Por defecto, los tokens se guardan fuera del repositorio en:
 ```
 
 El token equivale a una credencial y no debe compartirse. La aplicacion no
-guarda la contrasena. Todavia no escribe FIT ni TSV automaticamente y no
-incluye un servidor MCP.
+guarda la contrasena y todavia no escribe FIT ni TSV automaticamente.
+
+## Servidor MCP local
+
+GARMIN-QPRO incluye un servidor MCP opcional y exclusivamente de lectura. Usa
+transporte STDIO para conectar un cliente Codex del mismo ordenador con Garmin
+Connect y el conversor existente.
+
+Instalacion:
+
+```powershell
+pip install -e ".[mcp]"
+```
+
+La autenticacion inicial o renovacion de tokens se realiza fuera de MCP:
+
+```powershell
+python scripts\garmin_connect_smoke.py --limit 10
+```
+
+Comprobacion del servidor y listado de actividades:
+
+```powershell
+python scripts\mcp_stdio_smoke.py --limit 10
+```
+
+El servidor se ejecuta internamente mediante:
+
+```powershell
+python -m garmin_qpro.mcp_server
+```
+
+Ejecutarlo directamente no abre una interfaz. El proceso queda esperando
+mensajes MCP por la entrada estandar y reserva la salida estandar para el
+protocolo.
+
+El ejecutable verificado del entorno virtual de este proyecto es:
+
+```text
+C:\Users\lucio\Documents\Codex\GARMIN-QPRO\.venv\Scripts\python.exe
+```
+
+Para registrarlo en Codex:
+
+```powershell
+codex mcp add garmin-qpro -- "C:\Users\lucio\Documents\Codex\GARMIN-QPRO\.venv\Scripts\python.exe" -m garmin_qpro.mcp_server
+codex mcp list
+```
+
+Reinicia el cliente de Codex despues de anadir el servidor.
+
+Ejemplos de solicitudes:
+
+```text
+Muestrame mis diez actividades recientes de Garmin.
+```
+
+```text
+Inspecciona la actividad 23662199706.
+```
+
+```text
+Convierte la actividad 23662199706 usando la fila 23.
+```
+
+```text
+Convierte la actividad indicada como CMF usando la fila 36.
+```
+
+Codex no debe inventar la fila. Las claves desconocidas requieren una eleccion
+del usuario y `CURRENT_ROW_HINTS` no se consulta automaticamente. Las descargas
+permanecen en memoria y todavia no se escribe directamente en Quattro Pro.
+
+Este MCP local funciona con clientes Codex ejecutados en el mismo ordenador.
+ChatGPT web no puede utilizar directamente esta configuracion local. Una
+integracion web futura requeriria un plugin y un servidor MCP remoto mediante
+HTTPS.

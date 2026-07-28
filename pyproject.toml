@@ -15,6 +15,13 @@ dev = ["pytest>=8"]
 garmin = [
     "garminconnect>=0.3.6,<0.4",
 ]
+mcp = [
+    "mcp>=1.29,<2",
+    "garminconnect>=0.3.6,<0.4",
+]
+
+[project.scripts]
+garmin-qpro-mcp = "garmin_qpro.mcp_server.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
