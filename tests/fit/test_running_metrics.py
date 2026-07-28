@@ -6,6 +6,7 @@ import pytest
 from garmin_qpro.fit.models import DecodedFit
 from garmin_qpro.fit.running_metrics import (
     RunningMetricsRaw,
+    UnreliableCamTimeError,
     derive_moving_time_from_records,
     extract_running_metrics,
 )
@@ -215,6 +216,57 @@ def test_invalid_total_moving_time_without_safe_records_returns_none() -> None:
     )
 
     assert metrics.moving_time_s is None
+
+
+def test_cam_uses_valid_session_timer_instead_of_fragmented_records() -> None:
+    session = _session(
+        total_timer_time=5152.979,
+        total_elapsed_time=5152.979,
+        total_distance=3577.58,
+        enhanced_avg_speed=0.694,
+    )
+
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [session],
+                "record": _records(*(1.0 for _ in range(147))),
+            }
+        ),
+        qpro_key="CAM",
+    )
+
+    assert derive_moving_time_from_records(
+        _records(*(1.0 for _ in range(147)))
+    ) == 147.0
+    assert metrics.timer_time_s == 5152.979
+    assert metrics.moving_time_s == 5152.979
+    assert metrics.distance_m == 3577.58
+
+
+@pytest.mark.parametrize(
+    "session",
+    [
+        _session(
+            total_timer_time=None,
+            total_elapsed_time=5152.979,
+            total_distance=3577.58,
+            enhanced_avg_speed=0.694,
+        ),
+        _session(
+            total_timer_time=147.0,
+            total_elapsed_time=5152.979,
+            total_distance=3577.58,
+            enhanced_avg_speed=0.694,
+        ),
+    ],
+)
+def test_cam_rejects_missing_or_incoherent_session_time(session) -> None:
+    with pytest.raises(UnreliableCamTimeError):
+        extract_running_metrics(
+            _decoded({"session": [session]}),
+            qpro_key="CAM",
+        )
 
 
 def test_record_order_and_invalid_intervals_are_handled() -> None:

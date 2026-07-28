@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from math import isclose
 from typing import Any, Literal
 
 from garmin_qpro.fit.models import DecodedFit
@@ -14,6 +15,19 @@ SOURCE_SESSION: Literal["session"] = "session"
 SOURCE_CAL_WARMUP_LAPS: Literal["cal_warmup_laps"] = "cal_warmup_laps"
 MOVING_SPEED_THRESHOLD_MPS = 0.3
 MAX_RECORD_SAMPLE_GAP_S = 2.0
+CAM_MAX_AVERAGE_SPEED_MPS = 5.0
+CAM_SPEED_REL_TOLERANCE = 0.05
+CAM_SPEED_ABS_TOLERANCE_MPS = 0.05
+CAM_ELAPSED_TOLERANCE_S = 2.0
+
+
+class UnreliableCamTimeError(ValueError):
+    """Raised when a CAM activity has no trustworthy session duration."""
+
+    def __init__(self, reason: str) -> None:
+        self.qpro_key = "CAM"
+        self.reason = reason
+        super().__init__(f"CAM activity has no reliable session time: {reason}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +190,77 @@ def derive_moving_time_from_records(
             moving_seconds += 1.0
 
     return moving_seconds if valid_neighbor_seen else None
+
+
+def _cam_activity_time(
+    session: Mapping[Any, Any] | None,
+) -> float:
+    if session is None:
+        raise UnreliableCamTimeError("session message is missing")
+
+    timer_time = _positive_float_value(session.get("total_timer_time"))
+    if timer_time is None:
+        raise UnreliableCamTimeError(
+            "session.total_timer_time is missing or invalid"
+        )
+
+    distance = _positive_float_value(session.get("total_distance"))
+    if distance is None:
+        raise UnreliableCamTimeError(
+            "session.total_distance is missing or invalid"
+        )
+
+    calculated_speed = distance / timer_time
+    if calculated_speed > CAM_MAX_AVERAGE_SPEED_MPS:
+        raise UnreliableCamTimeError(
+            "session time and distance imply an implausible walking speed"
+        )
+
+    elapsed_raw = session.get("total_elapsed_time")
+    elapsed_time = (
+        _positive_float_value(elapsed_raw)
+        if elapsed_raw is not None
+        else None
+    )
+    if elapsed_raw is not None and elapsed_time is None:
+        raise UnreliableCamTimeError(
+            "session.total_elapsed_time is invalid"
+        )
+    if (
+        elapsed_time is not None
+        and timer_time > elapsed_time + CAM_ELAPSED_TOLERANCE_S
+    ):
+        raise UnreliableCamTimeError(
+            "session.total_timer_time exceeds total_elapsed_time"
+        )
+
+    average_speed_raw = session.get("enhanced_avg_speed")
+    if average_speed_raw is None:
+        average_speed_raw = session.get("avg_speed")
+    average_speed = (
+        _positive_float_value(average_speed_raw)
+        if average_speed_raw is not None
+        else None
+    )
+    if average_speed_raw is not None and average_speed is None:
+        raise UnreliableCamTimeError(
+            "session average speed is invalid"
+        )
+    if average_speed is not None and not isclose(
+        calculated_speed,
+        average_speed,
+        rel_tol=CAM_SPEED_REL_TOLERANCE,
+        abs_tol=CAM_SPEED_ABS_TOLERANCE_MPS,
+    ):
+        raise UnreliableCamTimeError(
+            "session time, distance, and average speed are inconsistent"
+        )
+    if average_speed is None and elapsed_time is None:
+        raise UnreliableCamTimeError(
+            "session time lacks an independent consistency check"
+        )
+
+    return timer_time
 
 
 def _weighted_average(
@@ -363,16 +448,21 @@ def extract_running_metrics(
         raise ValueError("qpro_key cannot be empty")
 
     session = _select_session(decoded)
-    session_moving_time = (
-        _positive_float_value(session.get("total_moving_time"))
-        if session is not None
-        else None
-    )
-    moving_time_s = (
-        session_moving_time
-        if session_moving_time is not None
-        else derive_moving_time_from_records(decoded.get_messages("record"))
-    )
+    if normalized_key == "CAM":
+        moving_time_s = _cam_activity_time(session)
+    else:
+        session_moving_time = (
+            _positive_float_value(session.get("total_moving_time"))
+            if session is not None
+            else None
+        )
+        moving_time_s = (
+            session_moving_time
+            if session_moving_time is not None
+            else derive_moving_time_from_records(
+                decoded.get_messages("record")
+            )
+        )
 
     source_scope = (
         SOURCE_CAL_WARMUP_LAPS

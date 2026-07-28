@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,10 @@ from garmin_qpro.conversion import (
 )
 from garmin_qpro.fit.force_metrics import ForceMetricsRaw
 from garmin_qpro.fit.models import DecodedFit
-from garmin_qpro.fit.running_metrics import RunningMetricsRaw
+from garmin_qpro.fit.running_metrics import (
+    RunningMetricsRaw,
+    UnreliableCamTimeError,
+)
 from garmin_qpro.input.sources import FitSource, UnsupportedInputError
 from garmin_qpro.qpro.formulas import (
     build_vmax_ms_formula,
@@ -217,6 +221,71 @@ def test_cal_special_rule_is_applied() -> None:
     assert result.metrics.warmup_lap_count == 1
     assert result.row.get("CADM") == "'140"
     assert result.row.get("PTM") == "'150"
+
+
+def test_cam_conversion_uses_coherent_session_time_and_current_schema() -> None:
+    start = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    records = [
+        {
+            "timestamp": start + timedelta(seconds=index),
+            "enhanced_speed": 1.0,
+        }
+        for index in range(147)
+    ]
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "session": [
+                    _session(
+                        sport_profile_name="Caminar",
+                        sport="walking",
+                        total_timer_time=5152.979,
+                        total_elapsed_time=5152.979,
+                        total_moving_time=None,
+                        total_distance=3577.58,
+                        enhanced_avg_speed=0.694,
+                        enhanced_max_speed=5.682,
+                    )
+                ],
+                "record": records,
+            }
+        ),
+        row_number=55,
+        explicit_qpro_key="CAM",
+    )
+
+    assert result.metrics.moving_time_s == 5152.979
+    assert result.row.get("MIN") == "'086"
+    assert result.row.get("DISTANCIA") == "3,58"
+    assert result.row.get("VMED") == "2,50"
+    assert result.row.get("RITMO") == "'24,00"
+    assert len(result.row.as_tuple()) == 23
+    assert result.tsv.count("\t") == 22
+    assert result.tsv.split("\t")[-1] == result.row.get("OVM")
+    assert not result.tsv.endswith("\t")
+
+
+def test_cam_conversion_rejects_unreliable_time_before_building_row() -> None:
+    with pytest.raises(UnreliableCamTimeError):
+        convert_decoded_activity(
+            _decoded(
+                messages={
+                    "session": [
+                        _session(
+                            sport_profile_name="Caminar",
+                            sport="walking",
+                            total_timer_time=147.0,
+                            total_elapsed_time=5152.979,
+                            total_moving_time=None,
+                            total_distance=3577.58,
+                            enhanced_avg_speed=0.694,
+                        )
+                    ]
+                }
+            ),
+            row_number=55,
+            explicit_qpro_key="CAM",
+        )
 
 
 def test_received_row_number_is_used_in_formulas() -> None:
