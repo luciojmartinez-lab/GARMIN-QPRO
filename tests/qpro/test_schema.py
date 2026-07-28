@@ -31,8 +31,6 @@ EXPECTED_COLUMNS = (
     "PTX",
     "RVM",
     "OVM",
-    "CARGA_AGUDA",
-    "CARGA_CRONICA",
 )
 
 EXPECTED_TEXT_FIELDS = frozenset(
@@ -49,20 +47,19 @@ EXPECTED_TEXT_FIELDS = frozenset(
         "PTX",
         "RVM",
         "OVM",
-        "CARGA_AGUDA",
-        "CARGA_CRONICA",
     }
 )
 
 
 def test_qpro_columns_have_exact_count_and_order() -> None:
-    assert QPRO_COLUMN_COUNT == 25
-    assert len(QPRO_COLUMNS) == 25
+    assert QPRO_COLUMN_COUNT == 23
+    assert len(QPRO_COLUMNS) == 23
     assert QPRO_COLUMNS == EXPECTED_COLUMNS
 
 
-def test_load_columns_are_last() -> None:
-    assert QPRO_COLUMNS[-2:] == ("CARGA_AGUDA", "CARGA_CRONICA")
+def test_ovm_is_the_last_column() -> None:
+    assert QPRO_COLUMNS[-1] == "OVM"
+    assert QPRO_COLUMN_INDEX["OVM"] == 23
 
 
 def test_column_indexes_are_human_one_based() -> None:

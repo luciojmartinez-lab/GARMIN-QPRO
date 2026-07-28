@@ -17,10 +17,10 @@ from garmin_qpro.qpro.schema import QPRO_COLUMNS
 
 
 def test_qpro_row_preserves_exact_column_count_and_order() -> None:
-    values = tuple(f"value-{index}" for index in range(25))
+    values = tuple(f"value-{index}" for index in range(23))
     row = QProRow(values)
 
-    assert len(row.as_tuple()) == 25
+    assert len(row.as_tuple()) == 23
     assert row.as_tuple() == values
     assert tuple(row.as_mapping()) == QPRO_COLUMNS
     assert tuple(row.as_mapping().values()) == values
@@ -28,28 +28,28 @@ def test_qpro_row_preserves_exact_column_count_and_order() -> None:
 
 
 def test_qpro_row_normalizes_output_to_strings_and_empty_cells() -> None:
-    row = QProRow([None, 1, 2.5, *("" for _ in range(22))])
+    row = QProRow([None, 1, 2.5, *("" for _ in range(20))])
 
     assert row.as_tuple()[:3] == ("", "1", "2.5")
     assert all(isinstance(value, str) for value in row.as_tuple())
 
 
-@pytest.mark.parametrize("count", [0, 24, 26])
+@pytest.mark.parametrize("count", [0, 22, 24])
 def test_qpro_row_rejects_invalid_value_count(count: int) -> None:
-    with pytest.raises(ValueError, match="exactly 25 values"):
+    with pytest.raises(ValueError, match="exactly 23 values"):
         QProRow([""] * count)
 
 
 def test_qpro_row_rejects_unknown_column() -> None:
-    row = QProRow([""] * 25)
+    row = QProRow([""] * 23)
     with pytest.raises(UnknownQProColumnError):
         row.get("UNKNOWN")
 
 
 def test_qpro_row_is_immutable() -> None:
-    row = QProRow([""] * 25)
+    row = QProRow([""] * 23)
     with pytest.raises(AttributeError):
-        row._values = ("changed",) * 25  # type: ignore[misc]
+        row._values = ("changed",) * 23  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("key", ["PES", " cmf "])
@@ -104,29 +104,21 @@ def test_pes_without_optional_metrics_has_exact_neutral_values() -> None:
         "'000",
         "'000",
         "'000",
-        "",
-        "",
     )
 
 
-def test_force_row_uses_real_exercise_and_training_loads() -> None:
+def test_force_row_uses_real_exercise_load() -> None:
     row = build_force_row(
         "CMF",
         36,
         exercise_load=133,
-        acute_load=98,
-        chronic_load=245,
     )
     assert row.get("CARGA") == "'133"
-    assert row.get("CARGA_AGUDA") == "'098"
-    assert row.get("CARGA_CRONICA") == "'245"
 
 
 def test_force_row_uses_neutral_load_only_for_missing_exercise_load() -> None:
     row = build_force_row("PES", 61)
     assert row.get("CARGA") == "'000"
-    assert row.get("CARGA_AGUDA") == ""
-    assert row.get("CARGA_CRONICA") == ""
 
 
 def test_force_row_formats_optional_real_metrics() -> None:

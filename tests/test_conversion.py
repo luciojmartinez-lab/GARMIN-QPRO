@@ -183,7 +183,7 @@ def test_received_row_number_is_used_in_formulas() -> None:
     assert result.row.get("VMED_M_S") == build_vmed_ms_formula(77)
 
 
-def test_result_is_immutable_and_tsv_has_25_columns() -> None:
+def test_result_is_immutable_and_tsv_has_23_columns() -> None:
     result = convert_decoded_activity(
         _decoded(messages={"session": [_session()]}),
         row_number=23,
@@ -191,8 +191,9 @@ def test_result_is_immutable_and_tsv_has_25_columns() -> None:
 
     with pytest.raises((FrozenInstanceError, AttributeError)):
         result.tsv = ""  # type: ignore[misc]
-    assert result.tsv.count("\t") == 24
-    assert len(result.tsv.split("\t")) == 25
+    assert result.tsv.count("\t") == 22
+    assert len(result.tsv.split("\t")) == 23
+    assert result.tsv.split("\t")[-1] == result.row.get("OVM")
 
 
 def test_identity_hash_errors_and_crc_are_preserved() -> None:

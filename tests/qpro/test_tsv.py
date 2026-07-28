@@ -3,16 +3,16 @@ from garmin_qpro.qpro.schema import QPRO_COLUMNS
 from garmin_qpro.qpro.tsv import row_to_tsv, rows_to_tsv
 
 
-def test_row_to_tsv_has_exactly_25_columns_and_24_tabs() -> None:
+def test_row_to_tsv_has_exactly_23_columns_and_22_tabs() -> None:
     row = build_force_row("PES", 61)
     output = row_to_tsv(row)
 
-    assert output.count("\t") == 24
-    assert len(output.split("\t")) == 25
+    assert output.count("\t") == 22
+    assert len(output.split("\t")) == 23
 
 
 def test_row_to_tsv_has_no_header_or_trailing_tab_or_newline() -> None:
-    row = build_force_row("CMF", 36, chronic_load=245)
+    row = build_force_row("CMF", 36, exercise_load=245)
     output = row_to_tsv(row)
 
     assert not output.startswith("\t".join(QPRO_COLUMNS))
@@ -22,7 +22,7 @@ def test_row_to_tsv_has_no_header_or_trailing_tab_or_newline() -> None:
 
 
 def test_row_to_tsv_does_not_add_wrapping_quotes() -> None:
-    row = QProRow(["PES", *("" for _ in range(24))])
+    row = QProRow(["PES", *("" for _ in range(22))])
     output = row_to_tsv(row)
 
     assert not output.startswith('"')

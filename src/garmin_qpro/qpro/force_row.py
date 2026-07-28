@@ -63,8 +63,6 @@ def _validate_metrics(metrics: ForceMetricsRaw) -> None:
     _optional_non_negative_number(metrics.aerobic_te, "aerobic_te")
     _optional_non_negative_number(metrics.anaerobic_te, "anaerobic_te")
     _optional_non_negative_number(metrics.exercise_load, "exercise_load")
-    if metrics.acute_load is not None or metrics.chronic_load is not None:
-        raise ValueError("acute_load and chronic_load must remain None")
 
 
 def build_force_metrics_row(
@@ -96,6 +94,4 @@ def build_force_metrics_row(
         aer=metrics.aerobic_te,
         ana=metrics.anaerobic_te,
         exercise_load=metrics.exercise_load,
-        acute_load=None,
-        chronic_load=None,
     )

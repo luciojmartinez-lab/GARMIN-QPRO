@@ -64,8 +64,6 @@ def _optional_non_negative(value: Any, field_name: str) -> float | None:
 def _validate_metrics(metrics: RunningMetricsRaw) -> None:
     for field in fields(RunningMetricsRaw):
         if field.name in {
-            "acute_load",
-            "chronic_load",
             "source_scope",
             "warmup_lap_count",
             "requires_manual_review",
@@ -112,7 +110,7 @@ def build_running_row(
     row_number: int,
     metrics: RunningMetricsRaw,
 ) -> QProRow:
-    """Build a 25-column Quattro Pro row from raw running metrics."""
+    """Build a 23-column Quattro Pro row from raw running metrics."""
 
     normalized_key = _normalize_running_key(key)
     if not isinstance(metrics, RunningMetricsRaw):
@@ -173,7 +171,5 @@ def build_running_row(
             metrics.avg_vertical_oscillation_mm,
             lambda value: format_text_decimal(value / 10, 1, width=2),
         ),
-        "CARGA_AGUDA": "",
-        "CARGA_CRONICA": "",
     }
     return QProRow(values[column] for column in QPRO_COLUMNS)

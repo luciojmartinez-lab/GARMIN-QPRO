@@ -27,8 +27,6 @@ QPRO_COLUMNS: Final[tuple[str, ...]] = (
     "PTX",
     "RVM",
     "OVM",
-    "CARGA_AGUDA",
-    "CARGA_CRONICA",
 )
 
 QPRO_COLUMN_COUNT: Final[int] = len(QPRO_COLUMNS)
@@ -51,7 +49,5 @@ TEXT_FIELDS: Final[frozenset[str]] = frozenset(
         "PTX",
         "RVM",
         "OVM",
-        "CARGA_AGUDA",
-        "CARGA_CRONICA",
     }
 )

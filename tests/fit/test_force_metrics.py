@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from math import inf, nan
 
 import pytest
@@ -53,8 +53,18 @@ def test_extracts_all_confirmed_force_session_metrics() -> None:
         aerobic_te=3.0,
         anaerobic_te=2.3,
         exercise_load=93.91545104980469,
-        acute_load=None,
-        chronic_load=None,
+    )
+
+
+def test_model_contains_only_current_force_fields() -> None:
+    assert tuple(field.name for field in fields(ForceMetricsRaw)) == (
+        "timer_time_s",
+        "elapsed_time_s",
+        "avg_hr_bpm",
+        "max_hr_bpm",
+        "aerobic_te",
+        "anaerobic_te",
+        "exercise_load",
     )
 
 
@@ -121,8 +131,6 @@ def test_missing_session_and_fields_remain_none() -> None:
             no_session.aerobic_te,
             no_session.anaerobic_te,
             no_session.exercise_load,
-            no_session.acute_load,
-            no_session.chronic_load,
         )
     )
 
@@ -155,8 +163,6 @@ def test_invalid_session_values_are_not_accepted(invalid) -> None:
         aerobic_te=None,
         anaerobic_te=None,
         exercise_load=None,
-        acute_load=None,
-        chronic_load=None,
     )
 
 
@@ -187,8 +193,6 @@ def test_zero_is_preserved_for_valid_metrics() -> None:
         aerobic_te=0.0,
         anaerobic_te=0.0,
         exercise_load=0.0,
-        acute_load=None,
-        chronic_load=None,
     )
 
 
@@ -215,8 +219,6 @@ def test_only_training_load_peak_can_supply_exercise_load() -> None:
     )
 
     assert metrics.exercise_load is None
-    assert metrics.acute_load is None
-    assert metrics.chronic_load is None
 
 
 def test_model_is_immutable() -> None:

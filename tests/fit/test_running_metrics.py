@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -90,11 +90,35 @@ def test_extracts_complete_session_metrics() -> None:
         max_power_w=500,
         avg_vertical_ratio_pct=8.4,
         avg_vertical_oscillation_mm=70.2,
-        acute_load=None,
-        chronic_load=None,
         source_scope="session",
         warmup_lap_count=0,
         requires_manual_review=False,
+    )
+
+
+def test_model_contains_only_current_running_fields() -> None:
+    assert tuple(field.name for field in fields(RunningMetricsRaw)) == (
+        "timer_time_s",
+        "moving_time_s",
+        "distance_m",
+        "avg_speed_mps",
+        "max_speed_mps",
+        "avg_hr_bpm",
+        "max_hr_bpm",
+        "aerobic_te",
+        "anaerobic_te",
+        "avg_cadence_raw",
+        "max_cadence_raw",
+        "avg_step_length_mm",
+        "avg_stance_time_ms",
+        "exercise_load",
+        "avg_power_w",
+        "max_power_w",
+        "avg_vertical_ratio_pct",
+        "avg_vertical_oscillation_mm",
+        "source_scope",
+        "warmup_lap_count",
+        "requires_manual_review",
     )
 
 
@@ -108,8 +132,6 @@ def test_optional_fields_remain_none() -> None:
     assert metrics.distance_m is None
     assert metrics.avg_cadence_raw is None
     assert metrics.exercise_load is None
-    assert metrics.acute_load is None
-    assert metrics.chronic_load is None
 
 
 def test_fractional_cadence_is_optional() -> None:

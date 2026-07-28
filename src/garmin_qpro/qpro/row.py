@@ -32,7 +32,7 @@ class InvalidForceKeyError(ValueError):
 
 @dataclass(frozen=True, slots=True, init=False)
 class QProRow:
-    """An immutable sequence of the 25 Quattro Pro cell values."""
+    """An immutable sequence of the 23 Quattro Pro cell values."""
 
     _values: tuple[str, ...]
 
@@ -79,8 +79,6 @@ def build_force_row(
     aer: float | None = None,
     ana: float | None = None,
     exercise_load: int | float | None = None,
-    acute_load: int | float | None = None,
-    chronic_load: int | float | None = None,
 ) -> QProRow:
     """Build the exact force template using Exercise Load for CARGA."""
 
@@ -120,11 +118,5 @@ def build_force_row(
         "PTX": "'000",
         "RVM": "'000",
         "OVM": "'000",
-        "CARGA_AGUDA": empty_or_formatted(
-            acute_load, format_text_integer
-        ),
-        "CARGA_CRONICA": empty_or_formatted(
-            chronic_load, format_text_integer
-        ),
     }
     return QProRow(values[column] for column in QPRO_COLUMNS)

@@ -38,8 +38,6 @@ class RunningMetricsRaw:
     max_power_w: int | None
     avg_vertical_ratio_pct: float | None
     avg_vertical_oscillation_mm: float | None
-    acute_load: None
-    chronic_load: None
     source_scope: Literal["session", "cal_warmup_laps"]
     warmup_lap_count: int = 0
     requires_manual_review: bool = False
@@ -258,8 +256,6 @@ def _session_metrics(
             max_power_w=None,
             avg_vertical_ratio_pct=None,
             avg_vertical_oscillation_mm=None,
-            acute_load=None,
-            chronic_load=None,
             source_scope=source_scope,
             warmup_lap_count=warmup_lap_count,
             requires_manual_review=requires_manual_review,
@@ -296,8 +292,6 @@ def _session_metrics(
         avg_vertical_oscillation_mm=_float_value(
             session.get("avg_vertical_oscillation")
         ),
-        acute_load=None,
-        chronic_load=None,
         source_scope=source_scope,
         warmup_lap_count=warmup_lap_count,
         requires_manual_review=requires_manual_review,
@@ -347,8 +341,6 @@ def _apply_cal_warmup_metrics(
             warmups,
             "avg_vertical_oscillation",
         ),
-        acute_load=None,
-        chronic_load=None,
         source_scope=SOURCE_CAL_WARMUP_LAPS,
         warmup_lap_count=warmup_count,
         requires_manual_review=requires_review,

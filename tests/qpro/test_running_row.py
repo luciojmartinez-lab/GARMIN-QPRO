@@ -38,8 +38,6 @@ def _metrics(**overrides) -> RunningMetricsRaw:
         "max_power_w": 215,
         "avg_vertical_ratio_pct": 11.426,
         "avg_vertical_oscillation_mm": 76.069,
-        "acute_load": None,
-        "chronic_load": None,
         "source_scope": "session",
         "warmup_lap_count": 0,
         "requires_manual_review": False,
@@ -48,12 +46,37 @@ def _metrics(**overrides) -> RunningMetricsRaw:
     return RunningMetricsRaw(**values)
 
 
-def test_running_row_preserves_exact_25_column_order() -> None:
+def test_running_row_preserves_exact_23_column_order() -> None:
     row = build_running_row("CAL", 18, _metrics())
 
     assert isinstance(row, QProRow)
-    assert len(row.as_tuple()) == 25
+    assert len(row.as_tuple()) == 23
     assert tuple(row.as_mapping()) == QPRO_COLUMNS
+    assert row.as_tuple() == (
+        "CAL",
+        "",
+        "5,83",
+        build_vmed_ms_formula(18),
+        "",
+        "7,05",
+        build_vmax_ms_formula(18),
+        "1,06",
+        "'096",
+        "'115",
+        "'011",
+        "'10,17",
+        "0,7",
+        "0,0",
+        "'139",
+        "'163",
+        "0,67",
+        "'339",
+        "'008",
+        "'156",
+        "'215",
+        "'11,4",
+        "'07,6",
+    )
 
 
 def test_running_key_is_normalized() -> None:
@@ -232,8 +255,6 @@ def test_missing_metrics_are_empty_cells() -> None:
         "PTX",
         "RVM",
         "OVM",
-        "CARGA_AGUDA",
-        "CARGA_CRONICA",
     ):
         assert row.get(column) == ""
 
@@ -267,7 +288,7 @@ def test_row_and_metrics_are_immutable_and_metrics_are_not_modified() -> None:
 
     assert metrics == before
     with pytest.raises(AttributeError):
-        row._values = ("x",) * 25  # type: ignore[misc]
+        row._values = ("x",) * 23  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "23"])
@@ -289,9 +310,10 @@ def test_invalid_numeric_metrics_are_rejected(value) -> None:
         build_running_row("ENT", 23, metrics)
 
 
-def test_tsv_serialization_has_25_columns_and_24_tabs() -> None:
+def test_tsv_serialization_has_23_columns_and_22_tabs() -> None:
     row = build_running_row("ENT", 23, _metrics())
     line = row_to_tsv(row)
 
-    assert line.count("\t") == 24
-    assert len(line.split("\t")) == 25
+    assert line.count("\t") == 22
+    assert len(line.split("\t")) == 23
+    assert line.split("\t")[-1] == row.get("OVM")

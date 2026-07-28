@@ -21,8 +21,6 @@ class ForceMetricsRaw:
     aerobic_te: float | None
     anaerobic_te: float | None
     exercise_load: float | None
-    acute_load: None
-    chronic_load: None
 
 
 def _finite_number(value: Any) -> float | None:
@@ -93,8 +91,6 @@ def extract_force_metrics(decoded: DecodedFit) -> ForceMetricsRaw:
             aerobic_te=None,
             anaerobic_te=None,
             exercise_load=None,
-            acute_load=None,
-            chronic_load=None,
         )
 
     return ForceMetricsRaw(
@@ -113,6 +109,4 @@ def extract_force_metrics(decoded: DecodedFit) -> ForceMetricsRaw:
         exercise_load=_non_negative_float(
             session.get("training_load_peak")
         ),
-        acute_load=None,
-        chronic_load=None,
     )

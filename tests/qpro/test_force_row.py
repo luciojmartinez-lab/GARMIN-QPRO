@@ -30,8 +30,6 @@ def _metrics(**overrides) -> ForceMetricsRaw:
         "aerobic_te": 3.0,
         "anaerobic_te": 2.3,
         "exercise_load": 93.91545104980469,
-        "acute_load": None,
-        "chronic_load": None,
     }
     values.update(overrides)
     return ForceMetricsRaw(**values)
@@ -46,8 +44,6 @@ def _empty_metrics() -> ForceMetricsRaw:
         aerobic_te=None,
         anaerobic_te=None,
         exercise_load=None,
-        acute_load=None,
-        chronic_load=None,
     )
 
 
@@ -61,8 +57,6 @@ def test_builds_exact_force_values_from_raw_metrics() -> None:
     assert row.get("AER") == "3,0"
     assert row.get("ANA") == "2,3"
     assert row.get("CARGA") == "'094"
-    assert row.get("CARGA_AGUDA") == ""
-    assert row.get("CARGA_CRONICA") == ""
 
 
 def test_timer_time_is_used_for_minutes_without_elapsed_fallback() -> None:
@@ -144,15 +138,6 @@ def test_invalid_heart_rate_type_is_rejected() -> None:
         )
 
 
-def test_acute_and_chronic_loads_cannot_be_injected() -> None:
-    with pytest.raises(ValueError):
-        build_force_metrics_row(
-            "CMF",
-            36,
-            replace(_metrics(), acute_load=10),
-        )
-
-
 def test_formulas_use_the_explicit_row_number() -> None:
     row = build_force_metrics_row("CMF", 36, _metrics())
 
@@ -166,9 +151,10 @@ def test_row_and_tsv_keep_exact_schema_shape() -> None:
 
     assert isinstance(row, QProRow)
     assert tuple(row.as_mapping()) == QPRO_COLUMNS
-    assert len(row.as_tuple()) == 25
-    assert tsv.count("\t") == 24
-    assert len(tsv.split("\t")) == 25
+    assert len(row.as_tuple()) == 23
+    assert tsv.count("\t") == 22
+    assert len(tsv.split("\t")) == 23
+    assert tsv.split("\t")[-1] == row.get("OVM")
 
 
 def test_empty_adapter_preserves_existing_force_template() -> None:
@@ -199,12 +185,10 @@ def test_running_builder_output_remains_independent() -> None:
         max_power_w=None,
         avg_vertical_ratio_pct=None,
         avg_vertical_oscillation_mm=None,
-        acute_load=None,
-        chronic_load=None,
         source_scope="session",
     )
 
     row = build_running_row("ENT", 23, metrics)
 
     assert row.get("CODIGO") == "ENT"
-    assert len(row.as_tuple()) == 25
+    assert len(row.as_tuple()) == 23
