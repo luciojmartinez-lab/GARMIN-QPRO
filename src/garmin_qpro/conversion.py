@@ -158,7 +158,32 @@ def convert_input_path(
     if len(sources) != 1:
         raise MultipleFitSourcesError(path=input_path, sources=sources)
 
-    decoded = decode_fit(sources[0], verify_crc=verify_crc)
+    return convert_fit_source(
+        sources[0],
+        row_number=row_number,
+        explicit_qpro_key=explicit_qpro_key,
+        verify_crc=verify_crc,
+    )
+
+
+def convert_fit_source(
+    source: FitSource,
+    *,
+    row_number: int,
+    explicit_qpro_key: str | None = None,
+    verify_crc: bool = True,
+) -> ActivityConversionResult:
+    """Decode and convert one already-loaded FIT source."""
+
+    if not isinstance(source, FitSource):
+        raise TypeError("source must be a FitSource")
+    _validate_row_number(row_number)
+    if explicit_qpro_key is not None and not isinstance(explicit_qpro_key, str):
+        raise TypeError("explicit_qpro_key must be a string or None")
+    if not isinstance(verify_crc, bool):
+        raise TypeError("verify_crc must be a boolean")
+
+    decoded = decode_fit(source, verify_crc=verify_crc)
     return convert_decoded_activity(
         decoded,
         row_number=row_number,

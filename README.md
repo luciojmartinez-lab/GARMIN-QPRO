@@ -1,32 +1,47 @@
 # GARMIN-QPRO
 
-Aplicacion Python en preparacion.
+Aplicacion Python para convertir actividades Garmin FIT en filas compatibles
+con una hoja de entrenamiento de Quattro Pro.
 
-## Estado
+## Funcionalidad actual
 
-Este repositorio contiene solo la estructura inicial del proyecto. La funcionalidad se implementara en fases posteriores.
+- Carga segura de archivos FIT y ZIP sin extraccion fisica.
+- Conversion individual de actividades de carrera y fuerza.
+- Conversion por lotes de varios FIT o ZIP.
+- Procesamiento directo de los FIT y ZIP de una carpeta.
+- Salida TSV en memoria con 23 columnas por actividad.
+- Conservacion de los fallos parciales sin detener el resto del lote.
 
-## Estructura
+En esta fase la aplicacion no escribe automaticamente archivos TSV ni modifica
+la hoja de Quattro Pro.
 
-```text
-GARMIN-QPRO/
-├── data/
-├── docs/
-├── scripts/
-├── src/
-│   └── garmin_qpro/
-└── tests/
+## Uso desde Python
+
+```python
+from pathlib import Path
+
+from garmin_qpro import convert_input_directory
+
+row_numbers = {
+    "CAL": 18,
+    "ENT": 23,
+    "CMF": 36,
+    "FIN": 41,
+}
+
+batch = convert_input_directory(
+    Path("data/private/entrada"),
+    row_numbers=row_numbers,
+)
+
+print(batch.tsv)
 ```
+
+`row_numbers` configura las filas actuales de la hoja del usuario. Estos
+valores se proporcionan expresamente y no se obtienen automaticamente de
+`CURRENT_ROW_HINTS`.
 
 ## Instalacion
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-En Windows PowerShell:
 
 ```powershell
 python -m venv .venv

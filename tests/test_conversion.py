@@ -9,6 +9,7 @@ from garmin_qpro.conversion import (
     ActivityRequiresChoiceError,
     MultipleFitSourcesError,
     convert_decoded_activity,
+    convert_fit_source,
     convert_input_path,
 )
 from garmin_qpro.fit.force_metrics import ForceMetricsRaw
@@ -433,6 +434,50 @@ def test_fit_individual_with_single_source_is_converted(monkeypatch) -> None:
 
     assert result.source_name == "one.fit"
     assert result.crc_checked is False
+
+
+def test_input_path_delegates_one_loaded_source(monkeypatch) -> None:
+    source = _source("one.fit", container=None, member=None)
+    sentinel = object()
+    observed = {}
+
+    monkeypatch.setattr(
+        "garmin_qpro.conversion.load_fit_sources",
+        lambda path: (source,),
+    )
+
+    def fake_convert(
+        fit_source,
+        *,
+        row_number,
+        explicit_qpro_key=None,
+        verify_crc=True,
+    ):
+        observed["source"] = fit_source
+        observed["row_number"] = row_number
+        observed["key"] = explicit_qpro_key
+        observed["crc"] = verify_crc
+        return sentinel
+
+    monkeypatch.setattr(
+        "garmin_qpro.conversion.convert_fit_source",
+        fake_convert,
+    )
+
+    result = convert_input_path(
+        Path("one.fit"),
+        row_number=36,
+        explicit_qpro_key="CMF",
+        verify_crc=False,
+    )
+
+    assert result is sentinel
+    assert observed == {
+        "source": source,
+        "row_number": 36,
+        "key": "CMF",
+        "crc": False,
+    }
 
 
 def test_zip_with_single_source_is_converted(monkeypatch) -> None:
