@@ -147,6 +147,54 @@ def test_moving_time_is_derived_from_records() -> None:
     assert metrics.moving_time_s == 3.0
 
 
+def test_positive_total_moving_time_is_used_directly() -> None:
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [_session(total_moving_time=42.5)],
+                "record": _records(1.0, 1.0, 1.0),
+            }
+        ),
+        qpro_key="ENT",
+    )
+
+    assert metrics.moving_time_s == 42.5
+
+
+@pytest.mark.parametrize(
+    "invalid_moving_time",
+    [0, -1, "42"],
+)
+def test_invalid_total_moving_time_falls_back_to_records(
+    invalid_moving_time,
+) -> None:
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [_session(total_moving_time=invalid_moving_time)],
+                "record": _records(1.0, 0.0, 1.0),
+            }
+        ),
+        qpro_key="ENT",
+    )
+
+    assert metrics.moving_time_s == 2.0
+
+
+def test_invalid_total_moving_time_without_safe_records_returns_none() -> None:
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [_session(total_moving_time=0)],
+                "record": [{"enhanced_speed": 1.0}],
+            }
+        ),
+        qpro_key="ENT",
+    )
+
+    assert metrics.moving_time_s is None
+
+
 def test_record_order_and_invalid_intervals_are_handled() -> None:
     start = datetime(2026, 7, 6, tzinfo=timezone.utc)
     records = [

@@ -68,6 +68,13 @@ def _int_value(value: Any) -> int | None:
     return int(parsed)
 
 
+def _positive_float_value(value: Any) -> float | None:
+    parsed = _float_value(value)
+    if parsed is None or parsed <= 0:
+        return None
+    return parsed
+
+
 def _combined_number(
     message: Mapping[Any, Any],
     whole_field: str,
@@ -365,7 +372,7 @@ def extract_running_metrics(
 
     session = _select_session(decoded)
     session_moving_time = (
-        _float_value(session.get("total_moving_time"))
+        _positive_float_value(session.get("total_moving_time"))
         if session is not None
         else None
     )
