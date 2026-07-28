@@ -17,6 +17,8 @@ CONFIRMED_EXACT_MAPPINGS = (
     ("EB1 - Carrera Técnica-Triple", "ENT"),
     ("EB1 - Carrera Tec Triple", "ENT"),
     ("EB5 - MOVILIDAD VALLAS", "MOF"),
+    ("EB9 - Salto de altura - Competic", "CMF"),
+    ("EB9 - Triple Salto - Competicion", "CMF"),
 )
 
 UNCONFIRMED_NAMES = (
@@ -63,6 +65,16 @@ def test_all_confirmed_exact_mappings(
             "ENT",
         ),
         ("eb5- movilidad vallas", "eb5 - movilidad vallas", "MOF"),
+        (
+            "  eb9-  salto DE altura-  COMPETIC ",
+            "eb9 - salto de altura - competic",
+            "CMF",
+        ),
+        (
+            "EB9-TRIPLE SALTO-COMPETICION",
+            "eb9 - triple salto - competicion",
+            "CMF",
+        ),
     ],
 )
 def test_case_spaces_and_hyphen_spacing_are_normalized(
@@ -104,6 +116,22 @@ def test_unconfirmed_weight_phases_are_unresolved(workout_name: str) -> None:
 
 def test_eb1_carrera_one_resolves_ent() -> None:
     assert resolve_workout_name("EB1 - Carrera - 1").qpro_key == "ENT"
+
+
+@pytest.mark.parametrize(
+    "workout_name",
+    [
+        "EB9 - Salto de longitud - Competicion",
+        "EB9 - Salto de altura",
+        "EB9 - Triple Salto",
+        "EB9 - Competicion",
+    ],
+)
+def test_other_eb9_names_remain_unresolved(workout_name: str) -> None:
+    resolution = resolve_workout_name(workout_name)
+
+    assert resolution.qpro_key is None
+    assert resolution.matched_rule is None
 
 
 @pytest.mark.parametrize(

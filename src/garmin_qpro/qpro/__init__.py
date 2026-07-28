@@ -8,6 +8,7 @@ from .formatter import (
     format_text_pace,
 )
 from .formulas import build_vmax_ms_formula, build_vmed_ms_formula
+from .force_row import build_force_metrics_row
 from .row import (
     InvalidForceKeyError,
     QProRow,
@@ -50,6 +51,7 @@ __all__ = [
     "build_vmax_ms_formula",
     "build_vmed_ms_formula",
     "build_force_row",
+    "build_force_metrics_row",
     "build_running_row",
     "empty_or_formatted",
     "family_for_key",

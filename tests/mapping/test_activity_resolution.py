@@ -24,6 +24,26 @@ def test_known_workout_takes_precedence_over_sport_profile() -> None:
     assert resolution.requires_user_choice is False
 
 
+@pytest.mark.parametrize(
+    "workout_name",
+    [
+        "EB9 - Salto de altura - Competic",
+        "EB9 - Triple Salto - Competicion",
+    ],
+)
+def test_confirmed_eb9_competitions_resolve_cmf(
+    workout_name: str,
+) -> None:
+    resolution = resolve_activity(
+        workout_name=workout_name,
+        sport_profile_name="Fuerza",
+    )
+
+    assert resolution.qpro_key == "CMF"
+    assert resolution.resolution_source == WORKOUT_NAME_SOURCE
+    assert resolution.requires_user_choice is False
+
+
 @pytest.mark.parametrize("profile", ["Carrera", "running", "  CARRERA  "])
 def test_running_profile_without_known_workout_resolves_ent(
     profile: str,
