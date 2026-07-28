@@ -16,6 +16,10 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from garmin_qpro.fit.decoder import decode_fit
+from garmin_qpro.fit.activity_metadata import (
+    extract_activity_metadata,
+    resolve_decoded_activity,
+)
 from garmin_qpro.fit.models import DecodedFit
 from garmin_qpro.input.sources import FitSource, load_fit_sources
 
@@ -144,65 +148,25 @@ def _find_field(
 
 
 def find_activity_name(decoded: DecodedFit) -> tuple[str, str] | None:
-    """Find an explicit activity name using the required closed priority."""
+    """Find the explicit activity name using production metadata logic."""
 
-    ordered_locations = (
-        ("workout", "workout_name", "workout.workout_name"),
-        ("workout", "wkt_name", "workout.workout_name"),
-        ("workout", "name", "workout.name"),
-        ("activity", "activity_name", "activity.activity_name"),
-        ("activity", "name", "activity.name"),
-        ("activity", "title", "activity.title"),
-        ("session", "activity_name", "session.activity_name"),
-        ("session", "name", "session.name"),
-    )
-    sport, _ = find_sport(decoded)
-    sport_profile = find_sport_profile(decoded)
-    excluded_session_names = {
-        value.casefold()
-        for value in (sport, sport_profile)
-        if value is not None
-    }
-
-    for message_type, field_name, logical_location in ordered_locations:
-        found = _find_field(
-            decoded,
-            (field_name,),
-            (message_type,),
-        )
-        if found is None:
-            continue
-        if (
-            message_type == "session"
-            and field_name == "name"
-            and found[0].casefold() in excluded_session_names
-        ):
-            continue
-        return found[0], logical_location
-    return None
+    metadata = extract_activity_metadata(decoded)
+    if metadata.workout_name is None or metadata.workout_name_field is None:
+        return None
+    return metadata.workout_name, metadata.workout_name_field
 
 
 def find_sport_profile(decoded: DecodedFit) -> str | None:
     """Return the Garmin sport profile without treating it as activity name."""
 
-    profile = _find_field(
-        decoded,
-        ("sport_profile_name",),
-        ("session",),
-    )
-    return profile[0] if profile is not None else None
+    return extract_activity_metadata(decoded).sport_profile_name
 
 
 def find_sport(decoded: DecodedFit) -> tuple[str | None, str | None]:
     """Return explicit sport and subtype values when present."""
 
-    message_types = ("session", "sport", "activity", "workout")
-    sport = _find_field(decoded, ("sport",), message_types)
-    sub_sport = _find_field(decoded, ("sub_sport",), message_types)
-    return (
-        sport[0] if sport is not None else None,
-        sub_sport[0] if sub_sport is not None else None,
-    )
+    metadata = extract_activity_metadata(decoded)
+    return metadata.sport, metadata.sub_sport
 
 
 def _field_occurrences(decoded: DecodedFit) -> tuple[tuple[str, str], ...]:
@@ -303,9 +267,15 @@ def _format_errors(errors: tuple[Any, ...]) -> tuple[str, ...]:
 def render_decoded_fit(source: FitSource, decoded: DecodedFit) -> str:
     """Render one decoded FIT with a compact summary and sanitized detail."""
 
-    name = find_activity_name(decoded)
-    sport_profile = find_sport_profile(decoded)
-    sport, sub_sport = find_sport(decoded)
+    context = resolve_decoded_activity(decoded)
+    metadata = context.metadata
+    resolution = context.resolution
+    name = (
+        (metadata.workout_name, metadata.workout_name_field)
+        if metadata.workout_name is not None
+        and metadata.workout_name_field is not None
+        else None
+    )
     counts = {
         message_type: len(decoded.get_messages(message_type))
         for message_type in SUMMARY_MESSAGE_TYPES
@@ -329,9 +299,16 @@ def render_decoded_fit(source: FitSource, decoded: DecodedFit) -> str:
             if name is not None
             else "Campo nombre Garmin: no disponible"
         ),
-        f"Perfil deportivo Garmin: {sport_profile or 'no encontrado'}",
-        f"Deporte: {sport or 'no encontrado'}",
-        f"Subtipo: {sub_sport or 'no encontrado'}",
+        f"Perfil deportivo Garmin: {metadata.sport_profile_name or 'no encontrado'}",
+        f"Deporte: {metadata.sport or 'no encontrado'}",
+        f"Subtipo: {metadata.sub_sport or 'no encontrado'}",
+        f"Clave QPro resuelta: {resolution.qpro_key or 'pendiente'}",
+        f"Origen resolucion: {resolution.resolution_source or 'pendiente'}",
+        (
+            "Requiere eleccion manual: si"
+            if resolution.requires_user_choice
+            else "Requiere eleccion manual: no"
+        ),
         "Conteos: "
         + ", ".join(f"{key}={value}" for key, value in counts.items()),
         (
