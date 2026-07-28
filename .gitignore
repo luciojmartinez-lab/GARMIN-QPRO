@@ -37,6 +37,9 @@ coverage.xml
 .env
 .env.*
 !.env.example
+.garminconnect/
+.garmin-qpro/
+garmin_tokens.json
 
 # OS and editor files
 .DS_Store

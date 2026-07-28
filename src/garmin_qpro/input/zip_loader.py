@@ -1,5 +1,6 @@
 """Safe in-memory loading of FIT members from ZIP containers."""
 
+from io import BytesIO
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from zipfile import BadZipFile, LargeZipFile, ZipFile, ZipInfo
 
@@ -48,27 +49,66 @@ def _fit_members(archive: ZipFile) -> list[tuple[str, ZipInfo]]:
     return members
 
 
+def _load_archive_fit_sources(
+    archive: ZipFile,
+    *,
+    container_name: str,
+) -> tuple[FitSource, ...]:
+    members = _fit_members(archive)
+    if not members:
+        raise NoFitFilesError(
+            f"ZIP container has no FIT files: {container_name}"
+        )
+
+    return tuple(
+        FitSource(
+            source_name=PurePosixPath(safe_path).name,
+            container_name=container_name,
+            member_path=member.filename,
+            data=archive.read(member),
+        )
+        for safe_path, member in members
+    )
+
+
 def load_zip_fit_sources(path: Path) -> tuple[FitSource, ...]:
     """Load safe FIT members in deterministic path order without extraction."""
 
+    input_path = Path(path)
     try:
-        with ZipFile(path, mode="r") as archive:
-            members = _fit_members(archive)
-            if not members:
-                raise NoFitFilesError(
-                    f"ZIP container has no FIT files: {path.name}"
-                )
-
-            sources = tuple(
-                FitSource(
-                    source_name=PurePosixPath(safe_path).name,
-                    container_name=path.name,
-                    member_path=member.filename,
-                    data=archive.read(member),
-                )
-                for safe_path, member in members
+        with ZipFile(input_path, mode="r") as archive:
+            return _load_archive_fit_sources(
+                archive,
+                container_name=input_path.name,
             )
     except (BadZipFile, LargeZipFile) as exc:
-        raise InvalidZipError(f"Invalid ZIP container: {path.name}") from exc
+        raise InvalidZipError(
+            f"Invalid ZIP container: {input_path.name}"
+        ) from exc
 
-    return sources
+
+def load_zip_fit_sources_bytes(
+    data: bytes,
+    *,
+    container_name: str,
+) -> tuple[FitSource, ...]:
+    """Load safe FIT members directly from ZIP bytes without extraction."""
+
+    if not isinstance(data, bytes):
+        raise TypeError("ZIP data must be bytes")
+    if not isinstance(container_name, str):
+        raise TypeError("container_name must be a string")
+    normalized_name = container_name.strip()
+    if not normalized_name:
+        raise ValueError("container_name cannot be empty")
+
+    try:
+        with ZipFile(BytesIO(data), mode="r") as archive:
+            return _load_archive_fit_sources(
+                archive,
+                container_name=normalized_name,
+            )
+    except (BadZipFile, LargeZipFile) as exc:
+        raise InvalidZipError(
+            f"Invalid ZIP container: {normalized_name}"
+        ) from exc

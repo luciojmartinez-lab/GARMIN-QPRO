@@ -12,6 +12,9 @@ dependencies = ["garmin-fit-sdk>=21.208,<22"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+garmin = [
+    "garminconnect>=0.3.6,<0.4",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
