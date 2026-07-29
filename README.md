@@ -24,24 +24,15 @@ from pathlib import Path
 
 from garmin_qpro import convert_input_directory
 
-row_numbers = {
-    "CAL": 18,
-    "ENT": 23,
-    "CMF": 36,
-    "FIN": 41,
-}
-
 batch = convert_input_directory(
     Path("data/private/entrada"),
-    row_numbers=row_numbers,
 )
 
 print(batch.tsv)
 ```
 
-`row_numbers` configura las filas actuales de la hoja del usuario. Estos
-valores se proporcionan expresamente y no se obtienen automaticamente de
-`CURRENT_ROW_HINTS`.
+Las formulas usan referencias relativas de Quattro Pro. La conversion depende
+de la clave QPro y no necesita conocer la posicion actual de la fila.
 
 ## Instalacion
 
@@ -146,15 +137,15 @@ Inspecciona la actividad 23662199706.
 ```
 
 ```text
-Convierte la actividad 23662199706 usando la fila 23.
+Convierte la actividad 23662199706 con la clave ENT.
 ```
 
 ```text
-Convierte la actividad indicada como CMF usando la fila 36.
+Convierte la actividad indicada como CMF.
 ```
 
-Codex no debe inventar la fila. Las claves desconocidas requieren una eleccion
-del usuario y `CURRENT_ROW_HINTS` no se consulta automaticamente. Las descargas
+Codex no debe inventar la clave. Las claves desconocidas requieren una eleccion
+del usuario y `CURRENT_ROW_HINTS` no se consulta. Las descargas
 permanecen en memoria y todavia no se escribe directamente en Quattro Pro.
 Despues de editar o recortar una actividad en Garmin, las herramientas de
 inspeccion y conversion aceptan `force_refresh=true` para descargar de nuevo el

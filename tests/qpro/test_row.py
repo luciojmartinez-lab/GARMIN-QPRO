@@ -70,12 +70,12 @@ def test_unknown_keys_are_rejected_by_force_template(key: str) -> None:
         build_force_row(key, 23)
 
 
-def test_force_formulas_use_the_received_row_number() -> None:
-    row = build_force_row("PES", 61)
-    assert row.get("VMED_M_S") == build_vmed_ms_formula(61)
-    assert row.get("VMAX_M_S") == build_vmax_ms_formula(61)
-    assert "61" in row.get("VMED_M_S")
-    assert "61" in row.get("VMAX_M_S")
+def test_force_formulas_are_independent_of_row_number() -> None:
+    row = build_force_row("PES")
+    assert row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert row.get("VMAX_M_S") == build_vmax_ms_formula()
+    assert "61" not in row.get("VMED_M_S")
+    assert "61" not in row.get("VMAX_M_S")
 
 
 def test_pes_without_optional_metrics_has_exact_neutral_values() -> None:
@@ -139,9 +139,8 @@ def test_force_row_formats_optional_real_metrics() -> None:
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "23"])
-def test_force_row_rejects_invalid_rows(row_number) -> None:
-    with pytest.raises((TypeError, ValueError)):
-        build_force_row("PES", row_number)
+def test_force_row_ignores_deprecated_rows(row_number) -> None:
+    assert build_force_row("PES", row_number) == build_force_row("PES")
 
 
 @pytest.mark.parametrize("value", [True, nan, inf, -inf])

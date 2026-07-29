@@ -32,13 +32,12 @@ TOKEN_STORE_ENV = "GARMIN_QPRO_TOKEN_STORE"
 SERVER_INSTRUCTIONS = (
     "Servidor Garmin-QPRO exclusivamente de lectura. Lista actividades antes "
     "de convertir cuando el usuario no haya identificado una. No inventes "
-    "claves QPro ni numeros de fila. Si una actividad requiere eleccion "
-    "manual, pregunta al usuario. No uses CURRENT_ROW_HINTS automaticamente. "
+    "claves QPro. La conversion no usa numeros de fila. Si una actividad "
+    "requiere eleccion manual, pregunta al usuario. No uses CURRENT_ROW_HINTS. "
     "No expongas tokens, credenciales, coordenadas, mensajes FIT record ni "
     "bytes. Las descargas permanecen en memoria. "
     "Usa inspect_garmin_activity para revisar una actividad antes de convertir "
-    "cuando su identificacion o clave no este clara. La conversion requiere "
-    "siempre un numero de fila proporcionado expresamente."
+    "cuando su identificacion o clave no este clara."
 )
 
 
@@ -183,7 +182,6 @@ def create_mcp_server(
     )
     def convert_garmin_activity(
         activity_id: str | int,
-        row_number: int,
         explicit_qpro_key: str | None = None,
         verify_crc: bool = True,
         force_refresh: bool = False,
@@ -192,7 +190,6 @@ def create_mcp_server(
             "activity conversion",
             lambda: active_service.convert_garmin_activity(
                 activity_id=activity_id,
-                row_number=row_number,
                 explicit_qpro_key=explicit_qpro_key,
                 verify_crc=verify_crc,
                 force_refresh=force_refresh,

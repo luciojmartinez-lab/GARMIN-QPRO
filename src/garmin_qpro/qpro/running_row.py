@@ -109,12 +109,14 @@ def _rounded_text_integer(value: float | None) -> str:
 
 def build_running_row(
     key: str,
-    row_number: int,
-    metrics: RunningMetricsRaw,
+    row_number: object | RunningMetricsRaw | None = None,
+    metrics: RunningMetricsRaw | None = None,
 ) -> QProRow:
-    """Build a 23-column Quattro Pro row from raw running metrics."""
+    """Build a running row; the former row_number argument is ignored."""
 
     normalized_key = _normalize_running_key(key)
+    if metrics is None and isinstance(row_number, RunningMetricsRaw):
+        metrics = row_number
     if not isinstance(metrics, RunningMetricsRaw):
         raise TypeError("metrics must be a RunningMetricsRaw")
     _validate_metrics(metrics)
@@ -132,13 +134,13 @@ def build_running_row(
             vmed_kmh,
             lambda value: format_decimal(value, 2),
         ),
-        "VMED_M_S": build_vmed_ms_formula(row_number),
+        "VMED_M_S": build_vmed_ms_formula(),
         "RMAX": "",
         "VMAX": empty_or_formatted(
             metrics.max_speed_mps,
             lambda value: format_decimal(value * 3.6, 2),
         ),
-        "VMAX_M_S": build_vmax_ms_formula(row_number),
+        "VMAX_M_S": build_vmax_ms_formula(),
         "DISTANCIA": empty_or_formatted(
             metrics.distance_m,
             lambda value: format_decimal(value / 1000, 2),

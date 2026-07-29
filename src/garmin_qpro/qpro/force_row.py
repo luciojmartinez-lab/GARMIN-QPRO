@@ -48,13 +48,6 @@ def _optional_non_negative_integer(
     return value
 
 
-def _validate_row_number(row_number: int) -> None:
-    if isinstance(row_number, bool) or not isinstance(row_number, int):
-        raise TypeError("row_number must be an integer")
-    if row_number <= 0:
-        raise ValueError("row_number must be positive")
-
-
 def _validate_metrics(metrics: ForceMetricsRaw) -> None:
     _optional_non_negative_number(metrics.timer_time_s, "timer_time_s")
     _optional_non_negative_number(metrics.elapsed_time_s, "elapsed_time_s")
@@ -67,17 +60,18 @@ def _validate_metrics(metrics: ForceMetricsRaw) -> None:
 
 def build_force_metrics_row(
     key: str,
-    row_number: int,
-    metrics: ForceMetricsRaw,
+    row_number: object | ForceMetricsRaw | None = None,
+    metrics: ForceMetricsRaw | None = None,
 ) -> QProRow:
-    """Build a force row without changing the underlying force template."""
+    """Build a force row; the former row_number argument is ignored."""
 
     family = family_for_key(key)
     if family is not QProFamily.FORCE:
         raise InvalidForceKeyError(key)
+    if metrics is None and isinstance(row_number, ForceMetricsRaw):
+        metrics = row_number
     if not isinstance(metrics, ForceMetricsRaw):
         raise TypeError("metrics must be a ForceMetricsRaw")
-    _validate_row_number(row_number)
     _validate_metrics(metrics)
 
     minutes = (
@@ -87,7 +81,6 @@ def build_force_metrics_row(
     )
     return build_force_row(
         key,
-        row_number,
         ppme=metrics.avg_hr_bpm,
         ppmax=metrics.max_hr_bpm,
         minutes=minutes,

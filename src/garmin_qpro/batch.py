@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
 from typing import Literal
 
 from garmin_qpro.conversion import (
@@ -16,18 +15,15 @@ from garmin_qpro.conversion import (
 from garmin_qpro.fit.activity_metadata import resolve_decoded_activity
 from garmin_qpro.fit.decoder import decode_fit
 from garmin_qpro.input.sources import FitSource, load_fit_sources
-from garmin_qpro.qpro.rows import family_for_key
-
 BatchFailureStage = Literal[
     "load",
     "decode",
     "resolve",
-    "row_number",
     "convert",
 ]
 
 _ALLOWED_STAGES = frozenset(
-    {"load", "decode", "resolve", "row_number", "convert"}
+    {"load", "decode", "resolve", "convert"}
 )
 _SUPPORTED_SUFFIXES = frozenset({".fit", ".zip"})
 
@@ -86,37 +82,9 @@ class BatchConversionResult:
         return len(self.failures)
 
 
-class _MissingRowNumberError(LookupError):
-    pass
-
-
 def _validate_verify_crc(verify_crc: bool) -> None:
     if not isinstance(verify_crc, bool):
         raise TypeError("verify_crc must be a boolean")
-
-
-def _normalize_row_numbers(
-    row_numbers: Mapping[str, int],
-) -> Mapping[str, int]:
-    if not isinstance(row_numbers, Mapping):
-        raise TypeError("row_numbers must be a mapping")
-
-    normalized: dict[str, int] = {}
-    for key, row_number in row_numbers.items():
-        if not isinstance(key, str):
-            raise TypeError("row_numbers keys must be strings")
-        normalized_key = key.strip().upper()
-        family_for_key(normalized_key)
-        if normalized_key in normalized:
-            raise ValueError(
-                f"Duplicate QPro key after normalization: {normalized_key}"
-            )
-        if isinstance(row_number, bool) or not isinstance(row_number, int):
-            raise TypeError("row numbers must be integers")
-        if row_number <= 0:
-            raise ValueError("row numbers must be positive")
-        normalized[normalized_key] = row_number
-    return MappingProxyType(normalized)
 
 
 def _normalize_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
@@ -152,13 +120,12 @@ def _failure(
 def convert_input_paths(
     paths: Iterable[Path],
     *,
-    row_numbers: Mapping[str, int],
     verify_crc: bool = True,
+    row_numbers: object | None = None,
 ) -> BatchConversionResult:
-    """Convert all FIT sources while isolating per-path and per-source failures."""
+    """Convert all sources; row_numbers is deprecated and ignored."""
 
     _validate_verify_crc(verify_crc)
-    normalized_rows = _normalize_row_numbers(row_numbers)
     input_paths = _normalize_paths(paths)
 
     results: list[ActivityConversionResult] = []
@@ -222,26 +189,11 @@ def convert_input_paths(
                 continue
 
             qpro_key = resolution.qpro_key
-            row_number = normalized_rows.get(qpro_key)
-            if row_number is None:
-                error = _MissingRowNumberError(
-                    f"No row number configured for QPro key {qpro_key}"
-                )
-                failures.append(
-                    _failure(
-                        input_path=input_path,
-                        source=source,
-                        qpro_key=qpro_key,
-                        stage="row_number",
-                        error=error,
-                    )
-                )
-                continue
 
             try:
                 result = convert_decoded_activity(
                     decoded,
-                    row_number=row_number,
+                    row_number=None,
                 )
             except Exception as exc:
                 failures.append(
@@ -284,13 +236,13 @@ def discover_input_paths(directory: Path) -> tuple[Path, ...]:
 def convert_input_directory(
     directory: Path,
     *,
-    row_numbers: Mapping[str, int],
     verify_crc: bool = True,
+    row_numbers: object | None = None,
 ) -> BatchConversionResult:
-    """Discover immediate inputs and delegate to batch conversion."""
+    """Convert a directory; row_numbers is deprecated and ignored."""
 
     return convert_input_paths(
         discover_input_paths(directory),
-        row_numbers=row_numbers,
         verify_crc=verify_crc,
+        row_numbers=row_numbers,
     )

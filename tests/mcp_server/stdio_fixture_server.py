@@ -59,7 +59,6 @@ class SyntheticService:
         self,
         *,
         activity_id,
-        row_number,
         explicit_qpro_key=None,
         verify_crc=True,
         force_refresh=False,

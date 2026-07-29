@@ -73,24 +73,16 @@ class MultipleFitSourcesError(ValueError):
         )
 
 
-def _validate_row_number(row_number: int) -> None:
-    if isinstance(row_number, bool) or not isinstance(row_number, int):
-        raise TypeError("row_number must be an integer")
-    if row_number <= 0:
-        raise ValueError("row_number must be positive")
-
-
 def convert_decoded_activity(
     decoded: DecodedFit,
     *,
-    row_number: int,
     explicit_qpro_key: str | None = None,
+    row_number: object | None = None,
 ) -> ActivityConversionResult:
-    """Convert a decoded activity into one immutable QPro TSV row."""
+    """Convert an activity; row_number is deprecated and ignored."""
 
     if not isinstance(decoded, DecodedFit):
         raise TypeError("decoded must be a DecodedFit")
-    _validate_row_number(row_number)
     if explicit_qpro_key is not None and not isinstance(explicit_qpro_key, str):
         raise TypeError("explicit_qpro_key must be a string or None")
 
@@ -114,12 +106,11 @@ def convert_decoded_activity(
                 qpro_key=resolution.qpro_key,
             )
         )
-        row = build_running_row(resolution.qpro_key, row_number, metrics)
+        row = build_running_row(resolution.qpro_key, metrics)
     else:
         metrics = extract_force_metrics(decoded)
         row = build_force_metrics_row(
             resolution.qpro_key,
-            row_number,
             metrics,
         )
 
@@ -141,13 +132,12 @@ def convert_decoded_activity(
 def convert_input_path(
     path: Path,
     *,
-    row_number: int,
     explicit_qpro_key: str | None = None,
     verify_crc: bool = True,
+    row_number: object | None = None,
 ) -> ActivityConversionResult:
-    """Load, decode, and convert one FIT source from a FIT or ZIP path."""
+    """Load and convert one FIT; row_number is deprecated and ignored."""
 
-    _validate_row_number(row_number)
     if explicit_qpro_key is not None and not isinstance(explicit_qpro_key, str):
         raise TypeError("explicit_qpro_key must be a string or None")
     if not isinstance(verify_crc, bool):
@@ -160,24 +150,23 @@ def convert_input_path(
 
     return convert_fit_source(
         sources[0],
-        row_number=row_number,
         explicit_qpro_key=explicit_qpro_key,
         verify_crc=verify_crc,
+        row_number=row_number,
     )
 
 
 def convert_fit_source(
     source: FitSource,
     *,
-    row_number: int,
     explicit_qpro_key: str | None = None,
     verify_crc: bool = True,
+    row_number: object | None = None,
 ) -> ActivityConversionResult:
-    """Decode and convert one already-loaded FIT source."""
+    """Decode and convert one FIT; row_number is deprecated and ignored."""
 
     if not isinstance(source, FitSource):
         raise TypeError("source must be a FitSource")
-    _validate_row_number(row_number)
     if explicit_qpro_key is not None and not isinstance(explicit_qpro_key, str):
         raise TypeError("explicit_qpro_key must be a string or None")
     if not isinstance(verify_crc, bool):
@@ -186,6 +175,6 @@ def convert_fit_source(
     decoded = decode_fit(source, verify_crc=verify_crc)
     return convert_decoded_activity(
         decoded,
-        row_number=row_number,
         explicit_qpro_key=explicit_qpro_key,
+        row_number=row_number,
     )

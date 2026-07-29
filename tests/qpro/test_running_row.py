@@ -9,7 +9,7 @@ from garmin_qpro.qpro.formulas import (
     build_vmed_ms_formula,
 )
 from garmin_qpro.qpro.row import QProRow
-from garmin_qpro.qpro.rows import UnknownQProKeyError
+from garmin_qpro.qpro.rows import RUNNING_KEYS, UnknownQProKeyError
 from garmin_qpro.qpro.running_row import (
     InvalidRunningKeyError,
     build_running_row,
@@ -97,11 +97,19 @@ def test_unknown_keys_are_rejected(key: str) -> None:
         build_running_row(key, 23, _metrics())
 
 
-def test_formulas_use_received_row_number() -> None:
-    row = build_running_row("ENT", 23, _metrics())
+def test_formulas_are_independent_of_row_number() -> None:
+    row = build_running_row("ENT", _metrics())
 
-    assert row.get("VMED_M_S") == build_vmed_ms_formula(23)
-    assert row.get("VMAX_M_S") == build_vmax_ms_formula(23)
+    assert row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert row.get("VMAX_M_S") == build_vmax_ms_formula()
+
+
+@pytest.mark.parametrize("key", sorted(RUNNING_KEYS))
+def test_all_running_keys_use_row_independent_formulas(key: str) -> None:
+    row = build_running_row(key, _metrics())
+
+    assert row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert row.get("VMAX_M_S") == build_vmax_ms_formula()
 
 
 def test_vmed_uses_distance_and_moving_time_not_average_speed() -> None:
@@ -292,9 +300,12 @@ def test_row_and_metrics_are_immutable_and_metrics_are_not_modified() -> None:
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "23"])
-def test_invalid_row_numbers_are_rejected(row_number) -> None:
-    with pytest.raises((TypeError, ValueError)):
-        build_running_row("ENT", row_number, _metrics())
+def test_deprecated_row_numbers_are_ignored(row_number) -> None:
+    assert build_running_row(
+        "ENT",
+        row_number,
+        _metrics(),
+    ) == build_running_row("ENT", _metrics())
 
 
 def test_metrics_type_is_validated() -> None:

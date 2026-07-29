@@ -58,7 +58,6 @@ class FakeService:
         self,
         *,
         activity_id,
-        row_number,
         explicit_qpro_key=None,
         verify_crc=True,
         force_refresh=False,
@@ -67,7 +66,6 @@ class FakeService:
             (
                 "convert",
                 activity_id,
-                row_number,
                 explicit_qpro_key,
                 verify_crc,
                 force_refresh,
@@ -199,7 +197,8 @@ def test_instructions_first_512_characters_are_self_contained() -> None:
     assert len(prefix) == 512
     for required in (
         "exclusivamente de lectura",
-        "No inventes claves QPro ni numeros de fila",
+        "No inventes claves QPro",
+        "no usa numeros de fila",
         "requiere eleccion manual",
         "CURRENT_ROW_HINTS",
         "tokens",
@@ -227,7 +226,6 @@ def test_tool_inputs_have_no_secret_parameters() -> None:
         },
         "convert_garmin_activity": {
             "activity_id",
-            "row_number",
             "explicit_qpro_key",
             "verify_crc",
             "force_refresh",
@@ -262,7 +260,6 @@ def test_tool_calls_delegate_exact_arguments() -> None:
             "convert_garmin_activity",
             {
                 "activity_id": "7",
-                "row_number": 36,
                 "explicit_qpro_key": "CMF",
                 "verify_crc": False,
                 "force_refresh": True,
@@ -276,7 +273,7 @@ def test_tool_calls_delegate_exact_arguments() -> None:
     assert service.calls == [
         ("list", 2, 3),
         ("inspect", "7", False, True),
-        ("convert", "7", 36, "CMF", False, True),
+        ("convert", "7", "CMF", False, True),
     ]
 
 

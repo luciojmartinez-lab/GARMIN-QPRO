@@ -235,8 +235,6 @@ def test_convert_fit_source_converts_both_families(
     ("argument", "expected_error"),
     [
         ({"source": object(), "row_number": 23}, TypeError),
-        ({"source": _source("a.fit"), "row_number": True}, TypeError),
-        ({"source": _source("a.fit"), "row_number": 0}, ValueError),
         (
             {
                 "source": _source("a.fit"),
@@ -418,7 +416,7 @@ def test_unresolved_activity_becomes_resolve_failure(monkeypatch) -> None:
     assert failure.sha256 == source.sha256
 
 
-def test_missing_row_number_isolated_after_resolution(monkeypatch) -> None:
+def test_missing_row_number_no_longer_blocks_conversion(monkeypatch) -> None:
     path = Path("running.fit")
     source = _source("running.fit")
     _patch_sources_and_decoder(
@@ -432,11 +430,8 @@ def test_missing_row_number_isolated_after_resolution(monkeypatch) -> None:
         row_numbers={"CAL": 18},
     )
 
-    assert batch.success_count == 0
-    failure = batch.failures[0]
-    assert failure.stage == "row_number"
-    assert failure.qpro_key == "ENT"
-    assert failure.source_name == source.source_name
+    assert batch.success_count == 1
+    assert batch.failure_count == 0
 
 
 def test_convert_failure_isolated_after_row_lookup(monkeypatch) -> None:
@@ -449,7 +444,7 @@ def test_convert_failure_isolated_after_row_lookup(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "garmin_qpro.batch.convert_decoded_activity",
-        lambda decoded, *, row_number: (_ for _ in ()).throw(
+        lambda decoded, **kwargs: (_ for _ in ()).throw(
             RuntimeError("conversion failed")
         ),
     )
@@ -464,7 +459,7 @@ def test_convert_failure_isolated_after_row_lookup(monkeypatch) -> None:
     assert failure.message == "conversion failed"
 
 
-def test_normalized_row_map_is_used_without_mutating_input(monkeypatch) -> None:
+def test_deprecated_row_map_is_ignored_without_mutating_input(monkeypatch) -> None:
     path = Path("running.fit")
     source = _source("running.fit")
     _patch_sources_and_decoder(
@@ -479,38 +474,26 @@ def test_normalized_row_map_is_used_without_mutating_input(monkeypatch) -> None:
 
     assert batch.success_count == 1
     assert row_numbers == before
-    assert result_formula_rows(batch.results[0]) == (23, 23)
-
-
-def result_formula_rows(result: ActivityConversionResult) -> tuple[int, int]:
-    vmed = result.row.get("VMED_M_S")
-    vmax = result.row.get("VMAX_M_S")
-    for row_number in range(1, 100):
-        if (
-            vmed == build_vmed_ms_formula(row_number)
-            and vmax == build_vmax_ms_formula(row_number)
-        ):
-            return row_number, row_number
-    raise AssertionError("formula row not found")
+    assert batch.results[0].row.get("VMED_M_S") == build_vmed_ms_formula()
 
 
 @pytest.mark.parametrize(
-    ("row_numbers", "expected_error"),
+    "row_numbers",
     [
-        ({"UNKNOWN": 1}, ValueError),
-        ({"ENT": 0}, ValueError),
-        ({"ENT": -1}, ValueError),
-        ({"ENT": True}, TypeError),
-        ({"ENT": 1.5}, TypeError),
-        ({"ENT": "23"}, TypeError),
-        ({"ENT": 23, " ent ": 24}, ValueError),
-        ({1: 23}, TypeError),
+        {"UNKNOWN": 1},
+        {"ENT": 0},
+        {"ENT": -1},
+        {"ENT": True},
+        {"ENT": 1.5},
+        {"ENT": "23"},
+        {"ENT": 23, " ent ": 24},
+        {1: 23},
+        [],
     ],
 )
-def test_invalid_row_number_configuration_is_rejected_before_loading(
+def test_deprecated_row_number_configuration_is_ignored(
     monkeypatch,
     row_numbers,
-    expected_error,
 ) -> None:
     called = False
 
@@ -521,14 +504,11 @@ def test_invalid_row_number_configuration_is_rejected_before_loading(
 
     monkeypatch.setattr("garmin_qpro.batch.load_fit_sources", fake_load)
 
-    with pytest.raises(expected_error):
-        convert_input_paths([Path("input.fit")], row_numbers=row_numbers)
-    assert called is False
+    convert_input_paths([Path("input.fit")], row_numbers=row_numbers)
+    assert called is True
 
 
-def test_non_mapping_rows_and_single_path_text_are_rejected() -> None:
-    with pytest.raises(TypeError):
-        convert_input_paths([], row_numbers=[])  # type: ignore[arg-type]
+def test_single_path_text_is_rejected() -> None:
     with pytest.raises(TypeError):
         convert_input_paths("one.fit", row_numbers=ROW_NUMBERS)
     with pytest.raises(TypeError):
@@ -641,8 +621,8 @@ def test_batch_preserves_cal_and_force_rules(monkeypatch) -> None:
     assert batch.results[0].row.get("PTM") == "'150"
     assert batch.results[1].row.get("MIN") == "'028"
     assert batch.results[1].row.get("CARGA") == "'094"
-    assert result_formula_rows(batch.results[0]) == (18, 18)
-    assert result_formula_rows(batch.results[1]) == (36, 36)
+    assert batch.results[0].row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert batch.results[1].row.get("VMED_M_S") == build_vmed_ms_formula()
 
 
 def test_discover_input_paths_filters_and_orders_without_recursion(

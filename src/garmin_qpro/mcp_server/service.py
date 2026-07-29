@@ -56,14 +56,6 @@ def _validate_force_refresh(force_refresh: bool) -> bool:
     return force_refresh
 
 
-def _validate_row_number(row_number: int) -> int:
-    if isinstance(row_number, bool) or not isinstance(row_number, int):
-        raise TypeError("row_number must be an integer")
-    if row_number <= 0:
-        raise ValueError("row_number must be positive")
-    return row_number
-
-
 def _validate_list_page(start: int, limit: int) -> tuple[int, int]:
     if isinstance(start, bool) or not isinstance(start, int):
         raise TypeError("start must be an integer")
@@ -323,13 +315,12 @@ class GarminQProMcpService:
         self,
         *,
         activity_id: str | int,
-        row_number: int,
         explicit_qpro_key: str | None = None,
         verify_crc: bool = True,
         force_refresh: bool = False,
+        row_number: object | None = None,
     ) -> dict[str, Any]:
         normalized_id = normalize_activity_id(activity_id)
-        validated_row = _validate_row_number(row_number)
         normalized_key = _normalize_explicit_key(explicit_qpro_key)
         validated_crc = _validate_verify_crc(verify_crc)
         validated_refresh = _validate_force_refresh(force_refresh)
@@ -345,9 +336,9 @@ class GarminQProMcpService:
             try:
                 result = convert_fit_source(
                     source,
-                    row_number=validated_row,
                     explicit_qpro_key=normalized_key,
                     verify_crc=validated_crc,
+                    row_number=row_number,
                 )
             except Exception as exc:
                 failures.append(_failure_payload(source, exc))

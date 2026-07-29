@@ -13,6 +13,7 @@ from garmin_qpro.input import FitSource
 from garmin_qpro.mcp_server import TOKEN_REFRESH_COMMAND
 from garmin_qpro.mcp_server import service as service_module
 from garmin_qpro.mcp_server.service import GarminQProMcpService
+from garmin_qpro.qpro.formulas import build_vmed_ms_formula
 
 
 class FakeReader:
@@ -563,7 +564,7 @@ def test_cal_conversion_preserves_warmup_rule(monkeypatch) -> None:
     assert result["qpro_key"] == "CAL"
     assert result["metrics"]["source_scope"] == "cal_warmup_laps"
     assert result["row_values"][14] == "'140"
-    assert "C18" in result["row_values"][3]
+    assert result["row_values"][3] == build_vmed_ms_formula()
 
 
 def test_force_conversion_preserves_minutes_and_load(monkeypatch) -> None:
@@ -589,7 +590,7 @@ def test_force_conversion_preserves_minutes_and_load(monkeypatch) -> None:
     assert result["metric_family"] == "force"
     assert result["row_values"][10] == "'028"
     assert result["row_values"][18] == "'094"
-    assert "C36" in result["row_values"][3]
+    assert result["row_values"][3] == build_vmed_ms_formula()
 
 
 def test_manual_failure_keeps_identity_and_can_be_retried(
@@ -721,19 +722,22 @@ def test_service_tools_do_not_write_activity_files(
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "23"])
-def test_invalid_row_is_rejected_before_connection(row_number) -> None:
-    calls = []
-    service = GarminQProMcpService(
-        reader_factory=lambda path: calls.append(path)
+def test_deprecated_service_row_is_ignored(monkeypatch, row_number) -> None:
+    source = _source("one.fit")
+    decoded = _running_decoded(source)
+    reader = FakeReader(downloads={"1": _download("1", source)})
+    monkeypatch.setattr(
+        service_module,
+        "convert_fit_source",
+        lambda fit_source, **kwargs: convert_decoded_activity(decoded),
     )
 
-    with pytest.raises((TypeError, ValueError)):
-        service.convert_garmin_activity(
-            activity_id="1",
-            row_number=row_number,
-        )
+    payload = GarminQProMcpService(reader=reader).convert_garmin_activity(
+        activity_id="1",
+        row_number=row_number,
+    )
 
-    assert calls == []
+    assert payload["success_count"] == 1
 
 
 @pytest.mark.parametrize("key", [123, "", "UNKNOWN"])
@@ -746,7 +750,6 @@ def test_invalid_explicit_key_is_rejected_before_connection(key) -> None:
     with pytest.raises((TypeError, ValueError)):
         service.convert_garmin_activity(
             activity_id="1",
-            row_number=23,
             explicit_qpro_key=key,
         )
 
@@ -765,7 +768,6 @@ def test_invalid_conversion_crc_is_rejected_before_connection(
     with pytest.raises(TypeError):
         service.convert_garmin_activity(
             activity_id="1",
-            row_number=23,
             verify_crc=verify_crc,
         )
 

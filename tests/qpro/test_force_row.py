@@ -15,7 +15,7 @@ from garmin_qpro.qpro.row import (
     QProRow,
     build_force_row,
 )
-from garmin_qpro.qpro.rows import UnknownQProKeyError
+from garmin_qpro.qpro.rows import FORCE_KEYS, UnknownQProKeyError
 from garmin_qpro.qpro.running_row import build_running_row
 from garmin_qpro.qpro.schema import QPRO_COLUMNS
 from garmin_qpro.qpro.tsv import row_to_tsv
@@ -114,9 +114,12 @@ def test_metrics_type_is_required() -> None:
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "36"])
-def test_row_number_must_be_a_positive_integer(row_number) -> None:
-    with pytest.raises((TypeError, ValueError)):
-        build_force_metrics_row("CMF", row_number, _empty_metrics())
+def test_deprecated_row_number_is_ignored(row_number) -> None:
+    assert build_force_metrics_row(
+        "CMF",
+        row_number,
+        _empty_metrics(),
+    ) == build_force_metrics_row("CMF", _empty_metrics())
 
 
 @pytest.mark.parametrize("invalid", [True, "1", nan, inf, -inf, -1])
@@ -138,11 +141,19 @@ def test_invalid_heart_rate_type_is_rejected() -> None:
         )
 
 
-def test_formulas_use_the_explicit_row_number() -> None:
-    row = build_force_metrics_row("CMF", 36, _metrics())
+def test_formulas_are_independent_of_row_number() -> None:
+    row = build_force_metrics_row("CMF", _metrics())
 
-    assert row.get("VMED_M_S") == build_vmed_ms_formula(36)
-    assert row.get("VMAX_M_S") == build_vmax_ms_formula(36)
+    assert row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert row.get("VMAX_M_S") == build_vmax_ms_formula()
+
+
+@pytest.mark.parametrize("key", sorted(FORCE_KEYS))
+def test_all_force_keys_use_row_independent_formulas(key: str) -> None:
+    row = build_force_metrics_row(key, _empty_metrics())
+
+    assert row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert row.get("VMAX_M_S") == build_vmax_ms_formula()
 
 
 def test_row_and_tsv_keep_exact_schema_shape() -> None:

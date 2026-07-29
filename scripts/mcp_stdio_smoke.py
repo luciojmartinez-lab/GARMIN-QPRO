@@ -15,7 +15,7 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--activity-id")
-    parser.add_argument("--row-number", type=int)
+    parser.add_argument("--convert", action="store_true")
     parser.add_argument("--qpro-key")
     parser.add_argument(
         "--force-refresh",
@@ -23,10 +23,8 @@ def _arguments() -> argparse.Namespace:
         help="Download the current Garmin archive again instead of using cache",
     )
     args = parser.parse_args()
-    if args.row_number is not None and args.activity_id is None:
-        parser.error("--row-number requires --activity-id")
-    if args.qpro_key is not None and args.row_number is None:
-        parser.error("--qpro-key requires --row-number")
+    if (args.convert or args.qpro_key is not None) and args.activity_id is None:
+        parser.error("--convert and --qpro-key require --activity-id")
     return args
 
 
@@ -103,7 +101,7 @@ async def _run(args: argparse.Namespace) -> None:
                     f"crc={source['crc_checked']}"
                 )
 
-            if args.row_number is None:
+            if not args.convert and args.qpro_key is None:
                 return
 
             converted = _structured_result(
@@ -111,7 +109,6 @@ async def _run(args: argparse.Namespace) -> None:
                     "convert_garmin_activity",
                     {
                         "activity_id": args.activity_id,
-                        "row_number": args.row_number,
                         "explicit_qpro_key": args.qpro_key,
                         "verify_crc": True,
                         "force_refresh": args.force_refresh,

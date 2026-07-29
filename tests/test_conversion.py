@@ -390,13 +390,33 @@ def test_trimmed_cam_keeps_current_tsv_schema_and_last_ovm_cell() -> None:
     assert not result.tsv.endswith(("\t", "\n"))
 
 
-def test_received_row_number_is_used_in_formulas() -> None:
+@pytest.mark.parametrize("deprecated_row", [55, 60, None])
+def test_cam_formula_is_identical_with_any_row_or_none(
+    deprecated_row,
+) -> None:
     result = convert_decoded_activity(
-        _decoded(messages={"session": [_session()]}),
-        row_number=77,
+        _decoded(
+            messages={
+                "session": [
+                    _session(
+                        sport_profile_name="Caminar",
+                        sport="walking",
+                        total_timer_time=100.0,
+                        total_elapsed_time=100.0,
+                        total_distance=100.0,
+                        enhanced_avg_speed=1.0,
+                    )
+                ]
+            }
+        ),
+        row_number=deprecated_row,
+        explicit_qpro_key="CAM",
     )
 
-    assert result.row.get("VMED_M_S") == build_vmed_ms_formula(77)
+    assert result.row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert result.row.get("VMAX_M_S") == build_vmax_ms_formula()
+    for forbidden in ("C55", "B55", "F55", "E55", "C60", "F60"):
+        assert forbidden not in result.row.get("VMED_M_S")
 
 
 def test_result_is_immutable_and_tsv_has_23_columns() -> None:
@@ -540,15 +560,15 @@ def test_force_elapsed_time_does_not_replace_missing_timer_time() -> None:
     assert result.row.get("MIN") == ""
 
 
-def test_force_result_uses_received_row_and_current_schema() -> None:
+def test_force_result_uses_relative_formulas_and_current_schema() -> None:
     result = convert_decoded_activity(
         _decoded(messages={"session": [_force_session()]}),
         row_number=36,
         explicit_qpro_key="CMF",
     )
 
-    assert result.row.get("VMED_M_S") == build_vmed_ms_formula(36)
-    assert result.row.get("VMAX_M_S") == build_vmax_ms_formula(36)
+    assert result.row.get("VMED_M_S") == build_vmed_ms_formula()
+    assert result.row.get("VMAX_M_S") == build_vmax_ms_formula()
     assert len(result.row.as_tuple()) == 23
     assert result.tsv.count("\t") == 22
     assert result.tsv.split("\t")[-1] == result.row.get("OVM")
@@ -569,12 +589,13 @@ def test_decoded_type_is_validated() -> None:
 
 
 @pytest.mark.parametrize("row_number", [True, 0, -1, 1.5, "23"])
-def test_row_number_is_validated(row_number) -> None:
-    with pytest.raises((TypeError, ValueError)):
-        convert_decoded_activity(
-            _decoded(messages={"session": [_session()]}),
-            row_number=row_number,
-        )
+def test_deprecated_row_number_is_ignored(row_number) -> None:
+    decoded = _decoded(messages={"session": [_session()]})
+
+    assert convert_decoded_activity(
+        decoded,
+        row_number=row_number,
+    ).tsv == convert_decoded_activity(decoded).tsv
 
 
 def test_verify_crc_type_is_validated() -> None:

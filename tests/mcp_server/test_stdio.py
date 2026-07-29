@@ -61,7 +61,6 @@ async def _use_synthetic_server():
                 "convert_garmin_activity",
                 {
                     "activity_id": "42",
-                    "row_number": 23,
                     "explicit_qpro_key": None,
                     "verify_crc": True,
                 },

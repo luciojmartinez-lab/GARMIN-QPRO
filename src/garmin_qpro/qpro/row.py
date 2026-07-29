@@ -71,7 +71,7 @@ class QProRow:
 
 def build_force_row(
     key: str,
-    row_number: int,
+    row_number: object | None = None,
     *,
     ppme: int | None = None,
     ppmax: int | None = None,
@@ -80,7 +80,7 @@ def build_force_row(
     ana: float | None = None,
     exercise_load: int | float | None = None,
 ) -> QProRow:
-    """Build the exact force template using Exercise Load for CARGA."""
+    """Build the force template; row_number is deprecated and ignored."""
 
     if family_for_key(key) is not QProFamily.FORCE:
         raise InvalidForceKeyError(key)
@@ -90,10 +90,10 @@ def build_force_row(
         "CODIGO": normalized_key,
         "RMED": "",
         "VMED": "",
-        "VMED_M_S": build_vmed_ms_formula(row_number),
+        "VMED_M_S": build_vmed_ms_formula(),
         "RMAX": "",
         "VMAX": "",
-        "VMAX_M_S": build_vmax_ms_formula(row_number),
+        "VMAX_M_S": build_vmax_ms_formula(),
         "DISTANCIA": "0,00",
         "PPME": empty_or_formatted(ppme, format_text_integer),
         "PPMAX": empty_or_formatted(ppmax, format_text_integer),

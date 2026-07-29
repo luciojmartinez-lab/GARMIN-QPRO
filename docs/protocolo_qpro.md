@@ -1,6 +1,6 @@
 # Protocolo funcional y técnico — GARMIN‑QPRO
 
-**Versión:** 0.5 integrada  
+**Versión:** 0.6 integrada
 **Ámbito:** Fase 1 — FIT/ZIP → línea TSV lista para Quattro Pro  
 **Estado:** especificación principal de implementación
 
@@ -29,7 +29,7 @@ La salida debe conservar exactamente:
 
 - orden de columnas;
 - código de la primera columna;
-- fila utilizada en las fórmulas;
+- fórmulas relativas independientes de la fila;
 - tabuladores;
 - fórmulas de Quattro Pro;
 - apóstrofos iniciales;
@@ -54,7 +54,7 @@ La prioridad absoluta es que la línea quede con el mismo formato que las filas 
 8. Detectar el nombre real de la actividad Garmin.
 9. No usar encabezados amarillos de bloque como código.
 10. No asignar `ENT` como código provisional.
-11. Si el usuario indica explícitamente código o fila, su indicación manda.
+11. Si el usuario indica explícitamente el código, su indicación manda.
 12. Validar todos los campos antes de generar la línea.
 13. Nunca mezclar varias actividades en una sola línea.
 14. No considerar soportado un tipo de actividad hasta disponer de al menos un FIT y una salida TSV validada.
@@ -71,7 +71,6 @@ FIT o ZIP
   → detección del nombre Garmin
   → normalización a un modelo interno
   → clasificación a código Quattro Pro
-  → selección de la fila
   → selección de la fuente de cada campo
   → aplicación de reglas especiales
   → validaciones de coherencia
@@ -189,16 +188,17 @@ MOV, MOF, ESC, ESF, CIR
 
 ---
 
-# 7. Claves, familias de fila y resolución dinámica
+# 7. Claves, familias y resolución dinámica
 
 La lógica funcional debe depender de la **clave de la primera columna (A)**, no de un número de fila fijo.
 
-Los números de fila pueden cambiar si se insertan, eliminan o desplazan filas en Quattro Pro. Por tanto:
+Los números de fila pueden cambiar si se insertan, eliminan o desplazan filas
+en Quattro Pro y no forman parte de la conversión. Por tanto:
 
 1. la clave determina el conjunto de reglas;
-2. el número de fila se obtiene en tiempo de ejecución o desde una configuración actualizable;
-3. las fórmulas se generan sustituyendo la fila resuelta;
-4. nunca se debe deducir la naturaleza de una actividad únicamente por su posición actual.
+2. las fórmulas usan referencias relativas a su propia celda;
+3. ninguna salida TSV contiene referencias con número de fila;
+4. nunca se deduce la naturaleza de una actividad por su posición actual.
 
 ## 7.1 Familias de claves
 
@@ -257,14 +257,11 @@ La hoja mostrada actualmente sitúa, entre otras, estas claves en las filas indi
 Este mapa **no es una regla permanente**. Solo sirve como referencia de la
 disposición actual.
 
-## 7.3 Prioridad para obtener la fila
+## 7.3 Independencia de la posición
 
-1. Fila indicada expresamente por el usuario.
-2. Fila localizada por la clave en una tabla/configuración actualizada.
-3. Fila detectada directamente en la hoja, si en el futuro existe lectura de Quattro Pro.
-4. Preguntar al usuario si no puede resolverse con seguridad.
-
-No usar la fila 20 como valor provisional en una salida final.
+La conversión requiere la clave QPro, pero no solicita ni consulta una fila.
+Los mapas de filas que puedan conservarse como referencia visual son
+orientativos y no participan en fórmulas, métricas ni generación TSV.
 
 ## 7.4 Separación definitiva CMP / CMF
 
@@ -286,7 +283,7 @@ Estas filas siguen siendo orientativas; la regla funcional depende de la clave.
 
 # 8. Orden exacto de columnas TSV
 
-La salida contiene 25 columnas:
+La salida vigente contiene 23 columnas:
 
 | Nº | Campo |
 |---:|---|
@@ -313,18 +310,15 @@ La salida contiene 25 columnas:
 | 21 | PTX |
 | 22 | RVM |
 | 23 | OVM |
-| 24 | CARGA_AGUDA |
-| 25 | CARGA_CRONICA |
-
-Las columnas `CARGA_AGUDA` y `CARGA_CRONICA` deben ir siempre al final. Si no existen en el FIT, quedan vacías.
-
 No incluir cabecera en la línea lista para pegar.
 
 ---
 
 # 9. Formato TSV
 
-- Una fila de 25 columnas contiene exactamente 24 tabuladores. No se añade ningún separador después de la columna 25. Si la columna 25 está vacía, la línea termina necesariamente con el tabulador estructural que separa las columnas 24 y 25.
+- Una fila de 23 columnas contiene exactamente 22 tabuladores.
+- `OVM` es siempre la última celda.
+- No se añade un tabulador después de `OVM`.
 - Separador de filas: salto de línea.
 - Coma decimal.
 - Sin tabla Markdown.
@@ -353,8 +347,6 @@ PTM
 PTX
 RVM
 OVM
-CARGA_AGUDA
-CARGA_CRONICA
 ```
 
 Formatos:
@@ -370,7 +362,6 @@ Formatos:
 | PTM / PTX | `'###` | `'208` |
 | RVM | apóstrofo + decimal | `'10,1` |
 | OVM | apóstrofo + decimal | `'08,8` |
-| CARGA_AGUDA / CRONICA | `'###` | `'123` |
 
 No convertir automáticamente un campo ausente en `'000`.
 
@@ -390,36 +381,28 @@ No convertir automáticamente un campo ausente en `'000`.
 
 ## 11.2 Fórmula robusta de VMED M/S
 
-Para una fila resuelta dinámicamente como `n`:
+La salida real usa referencias relativas respecto de la celda que contiene la
+fórmula:
 
 ```text
-@SI(@ESERR(@SI(Cn<>"";(Cn*1000)/3600;1000/(Bn*60)));0;@SI(Cn<>"";(Cn*1000)/3600;1000/(Bn*60)))
+@SI(@ESERR(@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)));0;@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)))
 ```
 
-Ejemplo actual en la fila 23:
-
-```text
-@SI(@ESERR(@SI(C23<>"";(C23*1000)/3600;1000/(B23*60)));0;@SI(C23<>"";(C23*1000)/3600;1000/(B23*60)))
-```
-
-La fórmula debe construirse desde la clave y la fila actual resuelta, no
-almacenarse con `23` de forma permanente.
+En la columna D, `c(-1)r(0)` corresponde a C y `c(-2)r(0)` corresponde a B.
+Las referencias anteriores `Cn` y `Bn` eran marcadores conceptuales; nunca
+deben aparecer literalmente ni convertirse en referencias con número de fila.
 
 ## 11.3 Fórmula robusta confirmada de VMAX M/S
 
-Para una fila resuelta dinámicamente como `n`:
+VMAX utiliza exactamente la misma fórmula relativa:
 
 ```text
-@SI(@ESERR(@SI(Fn<>"";(Fn*1000)/3600;1000/(En*60)));0;@SI(Fn<>"";(Fn*1000)/3600;1000/(En*60)))
+@SI(@ESERR(@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)));0;@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)))
 ```
 
-Ejemplo actual en la fila 23:
-
-```text
-@SI(@ESERR(@SI(F23<>"";(F23*1000)/3600;1000/(E23*60)));0;@SI(F23<>"";(F23*1000)/3600;1000/(E23*60)))
-```
-
-Esta fórmula queda confirmada como definitiva.
+En la columna G, `c(-1)r(0)` corresponde a F y `c(-2)r(0)` corresponde a E.
+Las referencias anteriores `Fn` y `En` eran marcadores conceptuales. La
+fórmula es independiente de la posición de la fila.
 
 ## 11.4 Uso en ambas familias
 
@@ -659,8 +642,7 @@ Esta plantilla se aplica a las claves:
 TEF, MUL, CMF, EST, TST, PES, BMD, MOF, CIR, ESF
 ```
 
-La identificación se realiza por la clave de la columna A, no por el número de
-fila.
+La identificación se realiza únicamente por la clave de la columna A.
 
 ## 18.1 Valores obligatorios de la plantilla
 
@@ -668,10 +650,10 @@ fila.
 |---|---|
 | RMED | vacío |
 | VMED | vacío |
-| VMED M/S | fórmula robusta de la fila; resultado esperado `0,00` |
+| VMED M/S | fórmula robusta relativa; resultado esperado `0,00` |
 | RMAX | vacío |
 | VMAX | vacío |
-| VMAX M/S | fórmula robusta de la fila; resultado esperado `0,00` |
+| VMAX M/S | fórmula robusta relativa; resultado esperado `0,00` |
 | DISTANCIA | `0,00` |
 | RITMO | `'00,00` |
 | CADM | `'000` |
@@ -745,7 +727,6 @@ Antes de generar la línea comprobar:
 - archivo leído;
 - nombre Garmin;
 - código;
-- fila;
 - distancia;
 - tiempo activo o en movimiento;
 - velocidad media;
@@ -783,10 +764,10 @@ Comprobar:
 - cargas aguda y crónica no calculadas;
 - número exacto de columnas;
 - apóstrofos y ceros iniciales;
-- fórmula referida a la fila actual de la clave;
+- fórmula relativa exacta;
 - familia determinada por la clave de la columna A;
 - valores neutros de fuerza exactamente formateados;
-- fórmula referida a la fila correcta.
+- ausencia de referencias con número de fila.
 
 Si hay discrepancia:
 
@@ -803,7 +784,6 @@ Si hay discrepancia:
 Actividad detectada:
 Nombre Garmin:
 Código usado:
-Fila usada para fórmulas:
 Regla especial aplicada:
 
 Línea TSV:
@@ -822,10 +802,10 @@ Si el usuario pide además Excel, se puede generar `.xlsx`, pero no sustituye a 
 # 23. Ejemplo validado CAL
 
 ```text
-CAL		2,32	@SI(C18<>"";(C18*1000)/3600;1000/(B18*60))		10,45	@SI(F18<>"";(F18*1000)/3600;1000/(E18*60))	1,71	'098	'118	'044	'25,52	1,1	0,0	'034	'167	0,73	'322	'055	'037	'295	'10,9	'07,2		
+CAL		2,32	@SI(@ESERR(@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)));0;@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)))		10,45	@SI(@ESERR(@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)));0;@SI(c(-1)r(0)<>"";(c(-1)r(0)*1000)/3600;1000/(c(-2)r(0)*60)))	1,71	'098	'118	'044	'25,52	1,1	0,0	'034	'167	0,73	'322	'055	'037	'295	'10,9	'07,2
 ```
 
-Las dos últimas columnas están vacías porque no constan CARGA_AGUDA ni CARGA_CRONICA.
+La línea contiene 23 columnas y termina en `OVM`.
 
 ---
 
@@ -926,8 +906,8 @@ src/garmin_qpro/
 ## 26.1 Unitarias
 
 - mapeo de nombres;
-- selección de filas;
-- fórmulas estándar por fila;
+- resolución por clave;
+- fórmulas relativas independientes de la fila;
 - fórmulas `@ESERR`;
 - normalización de coma decimal;
 - apóstrofos;
@@ -939,7 +919,7 @@ src/garmin_qpro/
 - filtro CAL exacto;
 - rechazo del filtro CAL en otras actividades;
 - ZIP seguro;
-- 25 columnas exactas.
+- 23 columnas exactas y 22 tabuladores.
 
 ## 26.2 Regresión
 
@@ -986,8 +966,8 @@ Comparación carácter por carácter:
 # 28. Próximo paso de implementación
 
 1. Incorporar este documento al repositorio.
-2. Crear `qpro/schema.py` con las 25 columnas.
-3. Crear `qpro/rows.py` con códigos y filas.
+2. Crear `qpro/schema.py` con las 23 columnas vigentes.
+3. Crear `qpro/rows.py` con códigos y familias.
 4. Crear `qpro/formulas.py` con fórmulas estándar.
 5. No implementar aún las fórmulas `@ESERR` hasta obtenerlas literalmente.
 6. Crear el modelo interno.
@@ -1005,7 +985,7 @@ Comparación carácter por carácter:
 - Se fija la plantilla exacta de valores neutros para fuerza.
 - Se incorpora la fórmula robusta de VMED con `@ESERR`.
 - Se documenta la fórmula esperada de VMAX y queda pendiente su confirmación literal.
-- Se establece que las fórmulas se parametrizan con la fila actual de la clave.
+- Esta regla queda sustituida en v0.6 por referencias relativas.
 
 # 30. Cambios de la versión 0.5
 
@@ -1016,3 +996,11 @@ Comparación carácter por carácter:
 - `CMP` pasa a la familia de calentamiento/carrera.
 - `CMF` pasa a la familia de fuerza.
 - La disposición actual observada es `CMF` en la fila 36 y `CMP` en la fila 51.
+
+# 31. Cambios de la versión 0.6
+
+- VMED M/S y VMAX M/S usan la misma fórmula relativa exacta.
+- La conversión deja de solicitar o necesitar números de fila.
+- Los argumentos históricos de fila se consideran obsoletos y se ignoran.
+- El MCP deja de exponer `row_number`.
+- La salida vigente mantiene 23 columnas, 22 tabuladores y `OVM` al final.
