@@ -155,3 +155,22 @@ Este MCP local funciona con clientes Codex ejecutados en el mismo ordenador.
 ChatGPT web no puede utilizar directamente esta configuracion local. Una
 integracion web futura requeriria un plugin y un servidor MCP remoto mediante
 HTTPS.
+
+## Beta de escritorio para Windows
+
+Instala las dependencias de escritorio y abre la aplicacion:
+
+```powershell
+python -m pip install -e ".[desktop]"
+garmin-qpro-desktop
+```
+
+La ventana acepta varios archivos FIT o ZIP, tambien mediante arrastre. Cada
+actividad se procesa localmente y los datos permanecen en el ordenador. Las
+filas validas pueden copiarse por separado o juntas.
+
+Para generar `dist\GARMIN-QPRO.exe`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```

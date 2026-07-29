@@ -924,15 +924,15 @@ def test_ent_without_workout_intervals_keeps_session_behavior() -> None:
     assert metrics.moving_time_s == 88.0
 
 
-def test_flk_uses_at_most_four_selected_workout_intervals() -> None:
+def test_flk_uses_all_selected_workout_intervals() -> None:
     messages = _interval_messages(count=5)
     messages["session"] = [_session()]
 
     metrics = extract_running_metrics(_decoded(messages), qpro_key="FLK")
 
     assert metrics.source_scope == "workout_intervals"
-    assert metrics.workout_interval_count == 4
-    assert metrics.avg_speed_mps == pytest.approx(2.5)
+    assert metrics.workout_interval_count == 5
+    assert metrics.avg_speed_mps == pytest.approx(3.0)
 
 
 def test_model_is_immutable() -> None:

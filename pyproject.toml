@@ -12,6 +12,12 @@ dependencies = ["garmin-fit-sdk>=21.208,<22"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+desktop = [
+    "tkinterdnd2>=0.4.3,<1",
+]
+build = [
+    "PyInstaller>=6,<7",
+]
 garmin = [
     "garminconnect>=0.3.6,<0.4",
 ]
@@ -22,6 +28,7 @@ mcp = [
 
 [project.scripts]
 garmin-qpro-mcp = "garmin_qpro.mcp_server.__main__:main"
+garmin-qpro-desktop = "garmin_qpro.desktop.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
