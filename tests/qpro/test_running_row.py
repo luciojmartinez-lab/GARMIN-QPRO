@@ -122,6 +122,27 @@ def test_vmed_uses_distance_and_moving_time_not_average_speed() -> None:
     assert row.get("VMED") == "7,20"
 
 
+def test_workout_interval_row_uses_interval_speed_and_session_duration() -> None:
+    row = build_running_row(
+        "SER",
+        _metrics(
+            source_scope="workout_intervals",
+            timer_time_s=1134.48,
+            moving_time_s=30.0,
+            distance_m=830.0,
+            avg_speed_mps=6.112333333333333,
+            max_speed_mps=6.858,
+            workout_interval_count=3,
+        ),
+    )
+
+    assert row.get("VMED") == "22,00"
+    assert row.get("VMAX") == "24,69"
+    assert row.get("MIN") == "'019"
+    assert row.get("RITMO") == "'02,44"
+    assert row.get("DISTANCIA") == "0,83"
+
+
 def test_vmed_is_empty_when_distance_or_moving_time_is_missing_or_zero() -> None:
     assert build_running_row(
         "ENT", 23, _metrics(distance_m=None)

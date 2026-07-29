@@ -223,6 +223,133 @@ def test_cal_special_rule_is_applied() -> None:
     assert result.row.get("PTM") == "'150"
 
 
+def test_ser_conversion_uses_linked_running_intervals() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "workout": [_workout('EB7 - SPista 3*60m-10"')],
+                "workout_step": [
+                    {"message_index": 0, "intensity": "warmup"},
+                    {"message_index": 1, "intensity": "active"},
+                    {"message_index": 2, "intensity": "recovery"},
+                ],
+                "session": [
+                    _session(
+                        total_timer_time=1134.48,
+                        total_moving_time=30.0,
+                        total_distance=830.0,
+                        avg_heart_rate=99,
+                        max_heart_rate=113,
+                        total_training_effect=0.7,
+                        total_anaerobic_training_effect=2.4,
+                        training_load_peak=46.990325927734375,
+                    )
+                ],
+                "lap": [
+                    {
+                        "message_index": 1,
+                        "intensity": "active",
+                        "wkt_step_index": 1,
+                        "total_timer_time": 10.0,
+                        "total_distance": 60.0,
+                        "enhanced_avg_speed": 5.847,
+                        "enhanced_max_speed": 6.354,
+                        "avg_cadence": 40,
+                        "avg_fractional_cadence": 0.046875,
+                        "max_cadence": 102,
+                        "max_fractional_cadence": 0.5,
+                        "avg_step_length": 1903.3,
+                        "avg_stance_time": 182.3,
+                        "avg_power": 184,
+                        "max_power": 621,
+                        "avg_vertical_ratio": 4.27,
+                        "avg_vertical_oscillation": 81.5,
+                    },
+                    {
+                        "message_index": 2,
+                        "intensity": "recovery",
+                        "wkt_step_index": 2,
+                        "total_timer_time": 360.0,
+                    },
+                    {
+                        "message_index": 3,
+                        "intensity": "active",
+                        "wkt_step_index": 1,
+                        "total_timer_time": 10.0,
+                        "total_distance": 70.0,
+                        "enhanced_avg_speed": 6.587,
+                        "enhanced_max_speed": 6.634,
+                        "avg_cadence": 0,
+                        "max_cadence": 0,
+                        "avg_power": 0,
+                        "max_power": 0,
+                    },
+                    {
+                        "message_index": 5,
+                        "intensity": "active",
+                        "wkt_step_index": 1,
+                        "total_timer_time": 10.0,
+                        "total_distance": 60.0,
+                        "enhanced_avg_speed": 5.903,
+                        "enhanced_max_speed": 6.858,
+                        "avg_cadence": 32,
+                        "avg_fractional_cadence": 0.25,
+                        "max_cadence": 107,
+                        "max_fractional_cadence": 0.5,
+                        "avg_step_length": 1898.5,
+                        "avg_stance_time": 165.0,
+                        "avg_power": 128,
+                        "max_power": 651,
+                        "avg_vertical_ratio": 3.86,
+                        "avg_vertical_oscillation": 73.4,
+                    },
+                    {
+                        "message_index": 6,
+                        "intensity": "active",
+                        "total_timer_time": 374.48,
+                        "enhanced_avg_speed": 9.0,
+                        "enhanced_max_speed": 10.0,
+                    },
+                ],
+            }
+        )
+    )
+
+    assert result.activity_context.resolution.qpro_key == "SER"
+    assert result.activity_context.resolution.resolution_source == "workout_name"
+    assert result.metrics.source_scope == "workout_intervals"
+    assert result.metrics.requires_manual_review is True
+    assert result.row.as_tuple() == (
+        "SER",
+        "",
+        "22,00",
+        build_vmed_ms_formula(),
+        "",
+        "24,69",
+        build_vmax_ms_formula(),
+        "0,83",
+        "'099",
+        "'113",
+        "'019",
+        "'02,44",
+        "0,7",
+        "2,4",
+        "'072",
+        "'215",
+        "1,90",
+        "'174",
+        "'047",
+        "'156",
+        "'651",
+        "'04,1",
+        "'07,7",
+    )
+    assert result.tsv.count("\t") == 22
+    assert len(result.tsv.split("\t")) == 23
+    assert result.tsv.endswith("'07,7")
+    assert not result.tsv.endswith(("\t", "\n", "\r"))
+
+
 def test_cam_conversion_uses_coherent_session_time_and_current_schema() -> None:
     start = datetime(2026, 7, 20, tzinfo=timezone.utc)
     records = [

@@ -18,9 +18,16 @@ from garmin_qpro.fit.speed_filter import (
     SOFT_SPEED_FILTER_KEYS,
     filter_soft_activity_max_speed,
 )
+from garmin_qpro.fit.workout_intervals import (
+    WorkoutIntervalSelection,
+    select_running_workout_intervals,
+)
 
 SOURCE_SESSION: Literal["session"] = "session"
 SOURCE_CAL_WARMUP_LAPS: Literal["cal_warmup_laps"] = "cal_warmup_laps"
+SOURCE_WORKOUT_INTERVALS: Literal["workout_intervals"] = "workout_intervals"
+WORKOUT_INTERVAL_KEYS = frozenset({"ENT", "FLK", "SER"})
+FLK_MAX_WORKOUT_INTERVALS = 4
 MOVING_SPEED_THRESHOLD_MPS = 0.3
 MAX_RECORD_SAMPLE_GAP_S = 2.0
 CAM_MAX_AVERAGE_SPEED_MPS = 5.0
@@ -63,11 +70,17 @@ class RunningMetricsRaw:
     max_power_w: int | None
     avg_vertical_ratio_pct: float | None
     avg_vertical_oscillation_mm: float | None
-    source_scope: Literal["session", "cal_warmup_laps"]
+    source_scope: Literal[
+        "session",
+        "cal_warmup_laps",
+        "workout_intervals",
+    ]
     warmup_lap_count: int = 0
     requires_manual_review: bool = False
     is_trimmed: bool = False
     trim_reasons: tuple[str, ...] = ()
+    workout_interval_count: int = 0
+    review_reasons: tuple[str, ...] = ()
 
 
 def _is_number(value: Any) -> bool:
@@ -330,7 +343,11 @@ def _session_metrics(
     session: Mapping[Any, Any] | None,
     moving_time_s: float | None,
     *,
-    source_scope: Literal["session", "cal_warmup_laps"],
+    source_scope: Literal[
+        "session",
+        "cal_warmup_laps",
+        "workout_intervals",
+    ],
     warmup_lap_count: int = 0,
     requires_manual_review: bool = False,
 ) -> RunningMetricsRaw:
@@ -444,6 +461,205 @@ def _apply_cal_warmup_metrics(
         requires_manual_review=requires_review,
         is_trimmed=metrics.is_trimmed,
         trim_reasons=metrics.trim_reasons,
+        workout_interval_count=metrics.workout_interval_count,
+        review_reasons=metrics.review_reasons,
+    )
+
+
+def _lap_has_movement(lap: Mapping[Any, Any]) -> bool:
+    speed = _positive_float_value(lap.get("enhanced_avg_speed"))
+    distance = _positive_float_value(lap.get("total_distance"))
+    return speed is not None or distance is not None
+
+
+def _interval_value(
+    lap: Mapping[Any, Any],
+    value_field: str,
+    *,
+    fractional_field: str | None = None,
+) -> float | None:
+    if fractional_field is None:
+        return _float_value(lap.get(value_field))
+    return _combined_number(lap, value_field, fractional_field)
+
+
+def _interval_weighted_average(
+    laps: tuple[Mapping[Any, Any], ...],
+    value_field: str,
+    *,
+    fractional_field: str | None = None,
+) -> tuple[float | None, bool]:
+    numerator = 0.0
+    denominator = 0.0
+    missing_moving_value = False
+    for lap in laps:
+        duration = _positive_float_value(lap.get("total_timer_time"))
+        value = _interval_value(
+            lap,
+            value_field,
+            fractional_field=fractional_field,
+        )
+        if (
+            duration is None
+            or value is None
+            or (_lap_has_movement(lap) and value <= 0)
+        ):
+            if _lap_has_movement(lap):
+                missing_moving_value = True
+            continue
+        numerator += value * duration
+        denominator += duration
+    return (
+        numerator / denominator if denominator > 0 else None,
+        missing_moving_value,
+    )
+
+
+def _interval_maximum(
+    laps: tuple[Mapping[Any, Any], ...],
+    value_field: str,
+    *,
+    fractional_field: str | None = None,
+) -> tuple[float | None, bool]:
+    values: list[float] = []
+    missing_moving_value = False
+    for lap in laps:
+        value = _interval_value(
+            lap,
+            value_field,
+            fractional_field=fractional_field,
+        )
+        if value is None or (_lap_has_movement(lap) and value <= 0):
+            if _lap_has_movement(lap):
+                missing_moving_value = True
+            continue
+        values.append(value)
+    return (max(values) if values else None, missing_moving_value)
+
+
+def _apply_workout_interval_metrics(
+    metrics: RunningMetricsRaw,
+    session: Mapping[Any, Any] | None,
+    selection: WorkoutIntervalSelection,
+) -> RunningMetricsRaw:
+    laps = selection.laps
+    missing_fields: list[str] = []
+
+    def weighted(
+        field: str,
+        *,
+        fractional_field: str | None = None,
+    ) -> float | None:
+        value, missing = _interval_weighted_average(
+            laps,
+            field,
+            fractional_field=fractional_field,
+        )
+        if missing:
+            missing_fields.append(field)
+        return value
+
+    def maximum(
+        field: str,
+        *,
+        fractional_field: str | None = None,
+    ) -> float | None:
+        value, missing = _interval_maximum(
+            laps,
+            field,
+            fractional_field=fractional_field,
+        )
+        if missing:
+            missing_fields.append(field)
+        return value
+
+    avg_speed = weighted("enhanced_avg_speed")
+    max_speed = maximum("enhanced_max_speed")
+    avg_cadence = weighted(
+        "avg_cadence",
+        fractional_field="avg_fractional_cadence",
+    )
+    max_cadence = maximum(
+        "max_cadence",
+        fractional_field="max_fractional_cadence",
+    )
+    avg_step_length = weighted("avg_step_length")
+    avg_stance_time = weighted("avg_stance_time")
+    avg_power = weighted("avg_power")
+    max_power = maximum("max_power")
+    avg_vertical_ratio = weighted("avg_vertical_ratio")
+    avg_vertical_oscillation = weighted("avg_vertical_oscillation")
+
+    unique_missing = tuple(dict.fromkeys(missing_fields))
+    interval_review_reasons = (
+        (
+            "workout_interval_missing_values:"
+            + ",".join(unique_missing),
+        )
+        if unique_missing
+        else ()
+    )
+
+    return RunningMetricsRaw(
+        timer_time_s=(
+            _float_value(session.get("total_timer_time"))
+            if session is not None
+            else None
+        ),
+        moving_time_s=metrics.moving_time_s,
+        distance_m=(
+            _float_value(session.get("total_distance"))
+            if session is not None
+            else None
+        ),
+        avg_speed_mps=avg_speed,
+        max_speed_mps=max_speed,
+        avg_hr_bpm=(
+            _int_value(session.get("avg_heart_rate"))
+            if session is not None
+            else None
+        ),
+        max_hr_bpm=(
+            _int_value(session.get("max_heart_rate"))
+            if session is not None
+            else None
+        ),
+        aerobic_te=(
+            _float_value(session.get("total_training_effect"))
+            if session is not None
+            else None
+        ),
+        anaerobic_te=(
+            _float_value(
+                session.get("total_anaerobic_training_effect")
+            )
+            if session is not None
+            else None
+        ),
+        avg_cadence_raw=avg_cadence,
+        max_cadence_raw=max_cadence,
+        avg_step_length_mm=avg_step_length,
+        avg_stance_time_ms=avg_stance_time,
+        exercise_load=(
+            _float_value(session.get("training_load_peak"))
+            if session is not None
+            else None
+        ),
+        avg_power_w=avg_power,
+        max_power_w=int(max_power) if max_power is not None else None,
+        avg_vertical_ratio_pct=avg_vertical_ratio,
+        avg_vertical_oscillation_mm=avg_vertical_oscillation,
+        source_scope=SOURCE_WORKOUT_INTERVALS,
+        warmup_lap_count=metrics.warmup_lap_count,
+        requires_manual_review=(
+            metrics.requires_manual_review or bool(unique_missing)
+        ),
+        is_trimmed=metrics.is_trimmed,
+        trim_reasons=metrics.trim_reasons,
+        workout_interval_count=selection.count,
+        review_reasons=(
+            metrics.review_reasons + interval_review_reasons
+        ),
     )
 
 
@@ -643,6 +859,21 @@ def extract_running_metrics(
                 or speed_result.requires_manual_review
             ),
         )
+    if normalized_key in WORKOUT_INTERVAL_KEYS:
+        selection = select_running_workout_intervals(
+            decoded,
+            limit=(
+                FLK_MAX_WORKOUT_INTERVALS
+                if normalized_key == "FLK"
+                else None
+            ),
+        )
+        if selection.count > 0:
+            return _apply_workout_interval_metrics(
+                metrics,
+                session,
+                selection,
+            )
     if normalized_key != "CAL":
         return metrics
 

@@ -15,6 +15,10 @@ from .running_metrics import (
     derive_moving_time_from_records,
     extract_running_metrics,
 )
+from .workout_intervals import (
+    WorkoutIntervalSelection,
+    select_running_workout_intervals,
+)
 
 __all__ = [
     "ActivityContext",
@@ -24,10 +28,12 @@ __all__ = [
     "InvalidFitError",
     "RecordSegmentAudit",
     "RunningMetricsRaw",
+    "WorkoutIntervalSelection",
     "decode_fit",
     "audit_record_segment",
     "derive_moving_time_from_records",
     "extract_running_metrics",
+    "select_running_workout_intervals",
     "extract_activity_metadata",
     "extract_force_metrics",
     "resolve_decoded_activity",

@@ -173,6 +173,7 @@ Si no aparece:
 | `EB1 - Carrera Tec Altura` | `ENT` |
 | `EB1 - Carrera Técnica-Triple` | `ENT` |
 | `EB1 - Carrera Tec Triple` | `ENT` |
+| `EB7 - SPista 3*60m-10"` | `SER` |
 
 Regla contextual:
 
@@ -616,13 +617,15 @@ OVM
 
 No usar para ellos el promedio global.
 
-## 17.3 Prohibición fuera de CAL
+## 17.3 Prohibición de la regla Calentamiento fuera de CAL
 
 En cualquier otra actividad:
 
-- no usar intervalos para sustituir medias globales;
 - no aplicar el filtro “Calentamiento”;
 - no transportar esta regla por similitud de nombre.
+
+La selección de intervalos Carrera de `SER`, `FLK` y `ENT` se rige
+exclusivamente por la sección 17.5 y no reutiliza la regla CAL.
 
 ## 17.4 Ausencia del intervalo
 
@@ -631,6 +634,53 @@ Si no aparece el intervalo exacto:
 - no sustituirlo silenciosamente por el resumen global;
 - mostrar advertencia;
 - dejar vacíos los campos afectados o solicitar revisión.
+
+## 17.5 Intervalos Carrera en SER, FLK y ENT
+
+Las claves `SER`, `FLK` y `ENT` pueden utilizar laps de intervalos Carrera
+cuando el FIT conserva la estructura del entrenamiento Garmin.
+
+La selección es estructural:
+
+1. localizar mensajes `workout_step` con `intensity=active`;
+2. conservar sus `message_index` numéricos;
+3. seleccionar solo laps con `intensity=active` cuyo `wkt_step_index`
+   coincida con uno de esos índices;
+4. excluir recuperaciones, calentamientos y cualquier lap activo sin
+   `wkt_step_index` coincidente.
+
+No se seleccionan indiscriminadamente todos los laps activos.
+
+En `SER`, los datos generales proceden de la sesión:
+
+```text
+DISTANCIA, MIN, PPME, PPMAX, AER, ANA, CARGA
+```
+
+`MIN` usa `session.total_timer_time` completo.
+
+Los datos deportivos proceden exclusivamente de los laps seleccionados:
+
+```text
+VMED, VMAX, RITMO, CADM, CADX, ZAN, TCS, PTM, PTX, RVM, OVM
+```
+
+Las medias se ponderan por `lap.total_timer_time`:
+
+```text
+sum(lap.valor * lap.total_timer_time) / sum(lap.total_timer_time)
+```
+
+Los máximos son el mayor valor válido entre los laps seleccionados. La VMAX
+de `SER` no utiliza el filtro de picos de las actividades suaves.
+
+Si un lap en movimiento contiene cero o ausencia en una métrica deportiva,
+ese valor se trata como no disponible solo para esa métrica, no rebaja la
+media y la actividad queda marcada para revisión manual.
+
+En `FLK` se aplican las mismas reglas hasta un máximo de cuatro intervalos
+seleccionados. En `ENT` se usan los intervalos Carrera cuando existan; si no
+existen, se conserva el comportamiento general de sesión.
 
 ---
 

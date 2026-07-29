@@ -69,6 +69,8 @@ def _validate_metrics(metrics: RunningMetricsRaw) -> None:
             "requires_manual_review",
             "is_trimmed",
             "trim_reasons",
+            "workout_interval_count",
+            "review_reasons",
         }:
             continue
         _optional_non_negative(getattr(metrics, field.name), field.name)
@@ -79,6 +81,16 @@ def _positive_pair(first: float | None, second: float | None) -> bool:
 
 
 def _running_speed_kmh(metrics: RunningMetricsRaw) -> float | None:
+    if metrics.source_scope == "workout_intervals":
+        average_speed = _optional_non_negative(
+            metrics.avg_speed_mps,
+            "avg_speed_mps",
+        )
+        return (
+            average_speed * 3.6
+            if average_speed is not None and average_speed > 0
+            else None
+        )
     distance = _optional_non_negative(metrics.distance_m, "distance_m")
     moving_time = _optional_non_negative(metrics.moving_time_s, "moving_time_s")
     if not _positive_pair(distance, moving_time):
@@ -87,6 +99,16 @@ def _running_speed_kmh(metrics: RunningMetricsRaw) -> float | None:
 
 
 def _pace_seconds_per_km(metrics: RunningMetricsRaw) -> float | None:
+    if metrics.source_scope == "workout_intervals":
+        average_speed = _optional_non_negative(
+            metrics.avg_speed_mps,
+            "avg_speed_mps",
+        )
+        return (
+            1000 / average_speed
+            if average_speed is not None and average_speed > 0
+            else None
+        )
     distance = _optional_non_negative(metrics.distance_m, "distance_m")
     moving_time = _optional_non_negative(metrics.moving_time_s, "moving_time_s")
     if not _positive_pair(distance, moving_time):
@@ -123,8 +145,13 @@ def build_running_row(
 
     vmed_kmh = _running_speed_kmh(metrics)
     pace_seconds = _pace_seconds_per_km(metrics)
-    moving_minutes = (
-        metrics.moving_time_s / 60 if metrics.moving_time_s is not None else None
+    duration_s = (
+        metrics.timer_time_s
+        if metrics.source_scope == "workout_intervals"
+        else metrics.moving_time_s
+    )
+    duration_minutes = (
+        duration_s / 60 if duration_s is not None else None
     )
 
     values = {
@@ -147,7 +174,7 @@ def build_running_row(
         ),
         "PPME": _rounded_text_integer(metrics.avg_hr_bpm),
         "PPMAX": _rounded_text_integer(metrics.max_hr_bpm),
-        "MIN": _rounded_text_integer(moving_minutes),
+        "MIN": _rounded_text_integer(duration_minutes),
         "RITMO": empty_or_formatted(pace_seconds, format_text_pace),
         "AER": empty_or_formatted(
             metrics.aerobic_te,

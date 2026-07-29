@@ -19,6 +19,7 @@ CONFIRMED_EXACT_MAPPINGS = (
     ("EB5 - MOVILIDAD VALLAS", "MOF"),
     ("EB9 - Salto de altura - Competic", "CMF"),
     ("EB9 - Triple Salto - Competicion", "CMF"),
+    ('EB7 - SPista 3*60m-10"', "SER"),
 )
 
 UNCONFIRMED_NAMES = (
@@ -74,6 +75,11 @@ def test_all_confirmed_exact_mappings(
             "EB9-TRIPLE SALTO-COMPETICION",
             "eb9 - triple salto - competicion",
             "CMF",
+        ),
+        (
+            ' eb7-SPista   3*60m-10" ',
+            'eb7 - spista 3*60m - 10"',
+            "SER",
         ),
     ],
 )

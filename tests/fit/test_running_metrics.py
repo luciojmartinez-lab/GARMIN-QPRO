@@ -122,6 +122,8 @@ def test_model_contains_only_current_running_fields() -> None:
         "requires_manual_review",
         "is_trimmed",
         "trim_reasons",
+        "workout_interval_count",
+        "review_reasons",
     )
 
 
@@ -772,6 +774,165 @@ def test_cal_without_warmup_laps_needs_manual_review_and_keeps_specials_none() -
     assert metrics.max_power_w is None
     assert metrics.avg_vertical_ratio_pct is None
     assert metrics.avg_vertical_oscillation_mm is None
+
+
+def _interval_messages(count: int = 3):
+    active_laps = [
+        {
+            "message_index": 1,
+            "intensity": "active",
+            "wkt_step_index": 1,
+            "total_timer_time": 10.0,
+            "total_distance": 60.0,
+            "enhanced_avg_speed": 5.847,
+            "enhanced_max_speed": 6.354,
+            "avg_cadence": 40,
+            "avg_fractional_cadence": 0.046875,
+            "max_cadence": 102,
+            "max_fractional_cadence": 0.5,
+            "avg_step_length": 1903.3,
+            "avg_stance_time": 182.3,
+            "avg_power": 184,
+            "max_power": 621,
+            "avg_vertical_ratio": 4.27,
+            "avg_vertical_oscillation": 81.5,
+        },
+        {
+            "message_index": 3,
+            "intensity": "active",
+            "wkt_step_index": 1,
+            "total_timer_time": 10.0,
+            "total_distance": 70.0,
+            "enhanced_avg_speed": 6.587,
+            "enhanced_max_speed": 6.634,
+            "avg_cadence": 0,
+            "max_cadence": 0,
+            "avg_power": 0,
+            "max_power": 0,
+        },
+        {
+            "message_index": 5,
+            "intensity": "active",
+            "wkt_step_index": 1,
+            "total_timer_time": 10.0,
+            "total_distance": 60.0,
+            "enhanced_avg_speed": 5.903,
+            "enhanced_max_speed": 6.858,
+            "avg_cadence": 32,
+            "avg_fractional_cadence": 0.25,
+            "max_cadence": 107,
+            "max_fractional_cadence": 0.5,
+            "avg_step_length": 1898.5,
+            "avg_stance_time": 165.0,
+            "avg_power": 128,
+            "max_power": 651,
+            "avg_vertical_ratio": 3.86,
+            "avg_vertical_oscillation": 73.4,
+        },
+        {
+            "message_index": 6,
+            "intensity": "active",
+            "total_timer_time": 374.48,
+            "total_distance": 100.0,
+            "enhanced_avg_speed": 9.0,
+            "enhanced_max_speed": 10.0,
+        },
+    ]
+    if count > 3:
+        active_laps = [
+            {
+                **active_laps[0],
+                "message_index": index,
+                "enhanced_avg_speed": float(index),
+            }
+            for index in range(1, count + 1)
+        ]
+    return {
+        "workout_step": [
+            {"message_index": 0, "intensity": "warmup"},
+            {"message_index": 1, "intensity": "active"},
+            {"message_index": 2, "intensity": "recovery"},
+        ],
+        "lap": active_laps,
+    }
+
+
+def test_ser_uses_session_general_metrics_and_selected_workout_intervals() -> None:
+    messages = _interval_messages()
+    messages["session"] = [
+        _session(
+            total_timer_time=1134.48,
+            total_moving_time=30.0,
+            total_distance=830.0,
+            avg_heart_rate=99,
+            max_heart_rate=113,
+            total_training_effect=0.7,
+            total_anaerobic_training_effect=2.4,
+            training_load_peak=46.990325927734375,
+        )
+    ]
+
+    metrics = extract_running_metrics(_decoded(messages), qpro_key="SER")
+
+    assert metrics.source_scope == "workout_intervals"
+    assert metrics.workout_interval_count == 3
+    assert metrics.timer_time_s == 1134.48
+    assert metrics.distance_m == 830.0
+    assert metrics.avg_hr_bpm == 99
+    assert metrics.max_hr_bpm == 113
+    assert metrics.aerobic_te == 0.7
+    assert metrics.anaerobic_te == 2.4
+    assert metrics.exercise_load == pytest.approx(46.990325927734375)
+    assert metrics.avg_speed_mps == pytest.approx(6.112333333333333)
+    assert metrics.max_speed_mps == 6.858
+    assert metrics.avg_cadence_raw == pytest.approx(36.1484375)
+    assert metrics.max_cadence_raw == 107.5
+    assert metrics.avg_step_length_mm == pytest.approx(1900.9)
+    assert metrics.avg_stance_time_ms == pytest.approx(173.65)
+    assert metrics.avg_power_w == pytest.approx(156.0)
+    assert metrics.max_power_w == 651
+    assert metrics.avg_vertical_ratio_pct == pytest.approx(4.065)
+    assert metrics.avg_vertical_oscillation_mm == pytest.approx(77.45)
+    assert metrics.requires_manual_review is True
+    assert metrics.review_reasons == (
+        "workout_interval_missing_values:"
+        "avg_cadence,max_cadence,avg_step_length,avg_stance_time,"
+        "avg_power,max_power,avg_vertical_ratio,avg_vertical_oscillation",
+    )
+
+
+def test_ent_uses_workout_intervals_when_present() -> None:
+    messages = _interval_messages()
+    messages["session"] = [_session()]
+
+    metrics = extract_running_metrics(_decoded(messages), qpro_key="ENT")
+
+    assert metrics.source_scope == "workout_intervals"
+    assert metrics.workout_interval_count == 3
+    assert metrics.avg_speed_mps == pytest.approx(6.112333333333333)
+
+
+def test_ent_without_workout_intervals_keeps_session_behavior() -> None:
+    metrics = extract_running_metrics(
+        _decoded({"session": [_session(total_moving_time=88.0)]}),
+        qpro_key="ENT",
+    )
+
+    assert metrics.source_scope == "session"
+    assert metrics.workout_interval_count == 0
+    assert metrics.avg_speed_mps == 2.5
+    assert metrics.moving_time_s == 88.0
+
+
+def test_flk_uses_at_most_four_selected_workout_intervals() -> None:
+    messages = _interval_messages(count=5)
+    messages["session"] = [_session()]
+
+    metrics = extract_running_metrics(_decoded(messages), qpro_key="FLK")
+
+    assert metrics.source_scope == "workout_intervals"
+    assert metrics.workout_interval_count == 4
+    assert metrics.avg_speed_mps == pytest.approx(2.5)
 
 
 def test_model_is_immutable() -> None:
