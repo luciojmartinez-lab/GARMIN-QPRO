@@ -161,12 +161,14 @@ def create_mcp_server(
     def inspect_garmin_activity(
         activity_id: str | int,
         verify_crc: bool = True,
+        force_refresh: bool = False,
     ) -> dict[str, Any]:
         return _safe_tool_call(
             "activity inspection",
             lambda: active_service.inspect_garmin_activity(
                 activity_id=activity_id,
                 verify_crc=verify_crc,
+                force_refresh=force_refresh,
             ),
             tool_error=sdk.ToolError,
         )
@@ -184,6 +186,7 @@ def create_mcp_server(
         row_number: int,
         explicit_qpro_key: str | None = None,
         verify_crc: bool = True,
+        force_refresh: bool = False,
     ) -> dict[str, Any]:
         return _safe_tool_call(
             "activity conversion",
@@ -192,6 +195,7 @@ def create_mcp_server(
                 row_number=row_number,
                 explicit_qpro_key=explicit_qpro_key,
                 verify_crc=verify_crc,
+                force_refresh=force_refresh,
             ),
             tool_error=sdk.ToolError,
         )

@@ -17,6 +17,11 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--activity-id")
     parser.add_argument("--row-number", type=int)
     parser.add_argument("--qpro-key")
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Download the current Garmin archive again instead of using cache",
+    )
     args = parser.parse_args()
     if args.row_number is not None and args.activity_id is None:
         parser.error("--row-number requires --activity-id")
@@ -82,6 +87,7 @@ async def _run(args: argparse.Namespace) -> None:
                     {
                         "activity_id": args.activity_id,
                         "verify_crc": True,
+                        "force_refresh": args.force_refresh,
                     },
                 )
             )
@@ -108,6 +114,7 @@ async def _run(args: argparse.Namespace) -> None:
                         "row_number": args.row_number,
                         "explicit_qpro_key": args.qpro_key,
                         "verify_crc": True,
+                        "force_refresh": args.force_refresh,
                     },
                 )
             )
@@ -115,6 +122,14 @@ async def _run(args: argparse.Namespace) -> None:
                 f"Converted: {converted['success_count']} success, "
                 f"{converted['failure_count']} failure"
             )
+            for result in converted["results"]:
+                metrics = result.get("metrics") or {}
+                print(
+                    "Conversion review: "
+                    f"required={result['requires_manual_review']}, "
+                    f"trimmed={metrics.get('is_trimmed', False)}, "
+                    f"reasons={metrics.get('trim_reasons', ())}"
+                )
             if converted["tsv"]:
                 print(converted["tsv"])
 

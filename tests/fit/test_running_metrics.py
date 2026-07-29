@@ -120,6 +120,8 @@ def test_model_contains_only_current_running_fields() -> None:
         "source_scope",
         "warmup_lap_count",
         "requires_manual_review",
+        "is_trimmed",
+        "trim_reasons",
     )
 
 
@@ -366,6 +368,166 @@ def test_soft_activity_keeps_sustained_high_speed() -> None:
 
     assert metrics.max_speed_mps == 5.2
     assert metrics.requires_manual_review is False
+
+
+def _trimmed_messages(*, max_speed: float = 10.0):
+    start = datetime(2026, 7, 6, tzinfo=timezone.utc)
+    records = [
+        {
+            "timestamp": start + timedelta(seconds=index * 5),
+            "enhanced_speed": speed,
+            "distance": distance,
+            "heart_rate": heart_rate,
+            "cadence": cadence,
+            "power": power,
+        }
+        for index, (
+            speed,
+            distance,
+            heart_rate,
+            cadence,
+            power,
+        ) in enumerate(
+            [
+                (1.0, 0.0, 90, 50, 100),
+                (5.0, 5.0, 100, 60, 150),
+                (1.1, 10.0, 110, 70, 200),
+                (1.0, 15.0, 100, 60, 150),
+                (1.0, 20.0, 90, 50, 100),
+            ]
+        )
+    ]
+    return {
+        "session": [
+            _session(
+                start_time=start,
+                timestamp=start + timedelta(seconds=100),
+                total_timer_time=20.0,
+                total_elapsed_time=20.0,
+                total_moving_time=20.0,
+                total_distance=20.0,
+                enhanced_avg_speed=1.0,
+                enhanced_max_speed=max_speed,
+                avg_heart_rate=100,
+                max_heart_rate=180,
+                avg_cadence=60,
+                avg_fractional_cadence=0.0,
+                max_cadence=100,
+                max_fractional_cadence=0.0,
+                avg_power=150,
+                max_power=500,
+            )
+        ],
+        "record": records,
+    }
+
+
+def test_trimmed_soft_activity_uses_record_maxima_then_peak_filter() -> None:
+    metrics = extract_running_metrics(
+        _decoded(_trimmed_messages()),
+        qpro_key="CAM",
+    )
+
+    assert metrics.is_trimmed is True
+    assert "record_end_before_session_end" in metrics.trim_reasons
+    assert metrics.max_speed_mps == 1.1
+    assert metrics.max_hr_bpm == 110
+    assert metrics.max_cadence_raw == 70.0
+    assert metrics.max_power_w == 200
+    assert metrics.avg_speed_mps == 1.0
+    assert metrics.avg_hr_bpm == 100
+    assert metrics.avg_cadence_raw == 60.0
+    assert metrics.avg_power_w == 150
+    assert metrics.requires_manual_review is True
+
+
+def test_trimmed_fast_activity_uses_real_high_record_without_soft_filter() -> None:
+    metrics = extract_running_metrics(
+        _decoded(_trimmed_messages()),
+        qpro_key="ENT",
+    )
+
+    assert metrics.is_trimmed is True
+    assert metrics.max_speed_mps == 5.0
+    assert metrics.moving_time_s is None
+    assert metrics.requires_manual_review is True
+
+
+def test_trimmed_incoherent_averages_are_not_preserved() -> None:
+    messages = _trimmed_messages()
+    messages["session"][0].update(
+        enhanced_avg_speed=9.0,
+        avg_heart_rate=200,
+        avg_cadence=120,
+        avg_power=900,
+    )
+
+    metrics = extract_running_metrics(
+        _decoded(messages),
+        qpro_key="ENT",
+    )
+
+    assert metrics.avg_speed_mps is None
+    assert metrics.avg_hr_bpm is None
+    assert metrics.avg_cadence_raw is None
+    assert metrics.avg_power_w is None
+
+
+def test_trimmed_activity_uses_record_segment_distance() -> None:
+    messages = _trimmed_messages()
+    messages["session"][0]["total_distance"] = 999.0
+
+    metrics = extract_running_metrics(
+        _decoded(messages),
+        qpro_key="ENT",
+    )
+
+    assert metrics.distance_m == 20.0
+
+
+def test_trimmed_cam_rejects_timer_beyond_preserved_record_segment() -> None:
+    messages = _trimmed_messages()
+    messages["session"][0].update(
+        total_timer_time=100.0,
+        total_elapsed_time=100.0,
+        total_distance=20.0,
+        enhanced_avg_speed=0.2,
+    )
+
+    with pytest.raises(
+        UnreliableCamTimeError,
+        match="preserved record segment",
+    ):
+        extract_running_metrics(
+            _decoded(messages),
+            qpro_key="CAM",
+        )
+
+
+def test_trimmed_cal_keeps_existing_warmup_special_rule() -> None:
+    messages = _trimmed_messages()
+    messages["lap"] = [
+        {
+            "intensity": "warmup",
+            "total_timer_time": 10.0,
+            "avg_cadence": 72,
+            "max_cadence": 82,
+            "avg_power": 175,
+            "max_power": 225,
+        }
+    ]
+
+    metrics = extract_running_metrics(
+        _decoded(messages),
+        qpro_key="CAL",
+    )
+
+    assert metrics.is_trimmed is True
+    assert metrics.source_scope == "cal_warmup_laps"
+    assert metrics.avg_cadence_raw == 72.0
+    assert metrics.max_cadence_raw == 82.0
+    assert metrics.avg_power_w == 175.0
+    assert metrics.max_power_w == 225
 
 
 def test_soft_activity_without_neighbors_keeps_maximum_for_review() -> None:

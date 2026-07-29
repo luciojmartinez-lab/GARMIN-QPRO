@@ -10,6 +10,10 @@ from math import isclose
 from typing import Any, Literal
 
 from garmin_qpro.fit.models import DecodedFit
+from garmin_qpro.fit.record_segment import (
+    RecordSegmentAudit,
+    audit_record_segment,
+)
 from garmin_qpro.fit.speed_filter import (
     SOFT_SPEED_FILTER_KEYS,
     filter_soft_activity_max_speed,
@@ -23,6 +27,7 @@ CAM_MAX_AVERAGE_SPEED_MPS = 5.0
 CAM_SPEED_REL_TOLERANCE = 0.05
 CAM_SPEED_ABS_TOLERANCE_MPS = 0.05
 CAM_ELAPSED_TOLERANCE_S = 2.0
+TRIMMED_TIMER_RECORD_TOLERANCE_S = 15.0
 
 
 class UnreliableCamTimeError(ValueError):
@@ -59,6 +64,8 @@ class RunningMetricsRaw:
     source_scope: Literal["session", "cal_warmup_laps"]
     warmup_lap_count: int = 0
     requires_manual_review: bool = False
+    is_trimmed: bool = False
+    trim_reasons: tuple[str, ...] = ()
 
 
 def _is_number(value: Any) -> bool:
@@ -433,6 +440,105 @@ def _apply_cal_warmup_metrics(
         source_scope=SOURCE_CAL_WARMUP_LAPS,
         warmup_lap_count=warmup_count,
         requires_manual_review=requires_review,
+        is_trimmed=metrics.is_trimmed,
+        trim_reasons=metrics.trim_reasons,
+    )
+
+
+def _within_record_range(
+    value: int | float | None,
+    minimum: int | float | None,
+    maximum: int | float | None,
+) -> bool:
+    if value is None:
+        return True
+    if minimum is None or maximum is None:
+        return False
+    return minimum <= value <= maximum
+
+
+def _trimmed_average_speed_is_coherent(
+    metrics: RunningMetricsRaw,
+) -> bool:
+    if metrics.avg_speed_mps is None:
+        return True
+    if (
+        metrics.timer_time_s is None
+        or metrics.timer_time_s <= 0
+        or metrics.distance_m is None
+        or metrics.distance_m < 0
+    ):
+        return False
+    return isclose(
+        metrics.avg_speed_mps,
+        metrics.distance_m / metrics.timer_time_s,
+        rel_tol=CAM_SPEED_REL_TOLERANCE,
+        abs_tol=CAM_SPEED_ABS_TOLERANCE_MPS,
+    )
+
+
+def _limit_metrics_to_record_segment(
+    metrics: RunningMetricsRaw,
+    audit: RecordSegmentAudit,
+) -> RunningMetricsRaw:
+    """Replace stale summary maxima with values present in a trimmed segment."""
+
+    if not audit.is_trimmed:
+        return metrics
+
+    segment_distance = audit.distance_m
+    segment_metrics = replace(metrics, distance_m=segment_distance)
+    avg_speed = (
+        segment_metrics.avg_speed_mps
+        if _trimmed_average_speed_is_coherent(segment_metrics)
+        else None
+    )
+    avg_hr = (
+        metrics.avg_hr_bpm
+        if _within_record_range(
+            metrics.avg_hr_bpm,
+            audit.min_heart_rate_bpm,
+            audit.max_heart_rate_bpm,
+        )
+        else None
+    )
+    avg_cadence = (
+        metrics.avg_cadence_raw
+        if _within_record_range(
+            metrics.avg_cadence_raw,
+            audit.min_cadence_raw,
+            audit.max_cadence_raw,
+        )
+        else None
+    )
+    avg_power = (
+        metrics.avg_power_w
+        if _within_record_range(
+            metrics.avg_power_w,
+            audit.min_power_w,
+            audit.max_power_w,
+        )
+        else None
+    )
+
+    return replace(
+        metrics,
+        distance_m=segment_distance,
+        avg_speed_mps=avg_speed,
+        max_speed_mps=audit.max_speed_mps,
+        avg_hr_bpm=avg_hr,
+        max_hr_bpm=audit.max_heart_rate_bpm,
+        avg_cadence_raw=avg_cadence,
+        max_cadence_raw=audit.max_cadence_raw,
+        avg_power_w=avg_power,
+        max_power_w=(
+            int(audit.max_power_w)
+            if audit.max_power_w is not None
+            else None
+        ),
+        requires_manual_review=True,
+        is_trimmed=True,
+        trim_reasons=audit.trim_reasons,
     )
 
 
@@ -452,8 +558,20 @@ def extract_running_metrics(
         raise ValueError("qpro_key cannot be empty")
 
     session = _select_session(decoded)
+    record_audit = audit_record_segment(decoded, session=session)
     if normalized_key == "CAM":
         moving_time_s = _cam_activity_time(session)
+        if (
+            record_audit.is_trimmed
+            and record_audit.duration_s is not None
+            and (
+                moving_time_s
+                > record_audit.duration_s + TRIMMED_TIMER_RECORD_TOLERANCE_S
+            )
+        ):
+            raise UnreliableCamTimeError(
+                "session timer exceeds the preserved record segment"
+            )
     else:
         session_moving_time = (
             _positive_float_value(session.get("total_moving_time"))
@@ -461,10 +579,14 @@ def extract_running_metrics(
             else None
         )
         moving_time_s = (
-            session_moving_time
-            if session_moving_time is not None
-            else derive_moving_time_from_records(
-                decoded.get_messages("record")
+            derive_moving_time_from_records(record_audit.records)
+            if record_audit.is_trimmed
+            else (
+                session_moving_time
+                if session_moving_time is not None
+                else derive_moving_time_from_records(
+                    decoded.get_messages("record")
+                )
             )
         )
 
@@ -478,9 +600,14 @@ def extract_running_metrics(
         moving_time_s,
         source_scope=source_scope,
     )
+    metrics = _limit_metrics_to_record_segment(metrics, record_audit)
     if normalized_key in SOFT_SPEED_FILTER_KEYS:
         speed_result = filter_soft_activity_max_speed(
-            decoded.get_messages("record"),
+            (
+                record_audit.records
+                if record_audit.records
+                else decoded.get_messages("record")
+            ),
             original_max_speed_mps=metrics.max_speed_mps,
             average_speed_mps=metrics.avg_speed_mps,
         )

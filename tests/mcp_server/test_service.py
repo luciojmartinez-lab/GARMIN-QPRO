@@ -400,6 +400,65 @@ def test_download_cache_is_reused_between_inspection_and_conversion(
     assert service.cache_size == 1
 
 
+def test_force_refresh_replaces_cached_download_in_memory(monkeypatch) -> None:
+    old_source = _source("old.fit")
+    new_source = _source("new.fit")
+
+    class RefreshingReader(FakeReader):
+        def download_original_activity(self, activity_id):
+            self.download_calls.append(activity_id)
+            return (
+                _download(activity_id, old_source)
+                if len(self.download_calls) == 1
+                else _download(activity_id, new_source)
+            )
+
+    reader = RefreshingReader()
+    monkeypatch.setattr(
+        service_module,
+        "decode_fit",
+        lambda fit_source, verify_crc=True: _running_decoded(fit_source),
+    )
+    service = GarminQProMcpService(reader=reader)
+
+    first = service.inspect_garmin_activity(activity_id="1")
+    refreshed = service.inspect_garmin_activity(
+        activity_id="1",
+        force_refresh=True,
+    )
+    cached = service.inspect_garmin_activity(activity_id="1")
+
+    assert first["sources"][0]["source_name"] == "old.fit"
+    assert refreshed["sources"][0]["source_name"] == "new.fit"
+    assert cached["sources"][0]["source_name"] == "new.fit"
+    assert reader.download_calls == ["1", "1"]
+    assert service.cache_size == 1
+
+
+@pytest.mark.parametrize("force_refresh", [0, 1, "yes", None])
+def test_invalid_force_refresh_is_rejected_before_connection(
+    force_refresh,
+) -> None:
+    calls = []
+    service = GarminQProMcpService(
+        reader_factory=lambda path: calls.append(path)
+    )
+
+    with pytest.raises(TypeError):
+        service.inspect_garmin_activity(
+            activity_id="1",
+            force_refresh=force_refresh,
+        )
+    with pytest.raises(TypeError):
+        service.convert_garmin_activity(
+            activity_id="1",
+            row_number=23,
+            force_refresh=force_refresh,
+        )
+
+    assert calls == []
+
+
 def test_lru_cache_never_exceeds_eight_and_evicts_oldest() -> None:
     downloads = {
         str(index): _download(str(index), _source(f"{index}.fit"))

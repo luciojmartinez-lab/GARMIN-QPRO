@@ -67,6 +67,8 @@ def _validate_metrics(metrics: RunningMetricsRaw) -> None:
             "source_scope",
             "warmup_lap_count",
             "requires_manual_review",
+            "is_trimmed",
+            "trim_reasons",
         }:
             continue
         _optional_non_negative(getattr(metrics, field.name), field.name)

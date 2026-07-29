@@ -50,6 +50,12 @@ def _validate_verify_crc(verify_crc: bool) -> bool:
     return verify_crc
 
 
+def _validate_force_refresh(force_refresh: bool) -> bool:
+    if not isinstance(force_refresh, bool):
+        raise TypeError("force_refresh must be a boolean")
+    return force_refresh
+
+
 def _validate_row_number(row_number: int) -> int:
     if isinstance(row_number, bool) or not isinstance(row_number, int):
         raise TypeError("row_number must be an integer")
@@ -240,8 +246,14 @@ class GarminQProMcpService:
                 ) from exc
         return self._reader
 
-    def _get_download(self, activity_id: str) -> GarminActivityDownload:
-        cached = self._cache.get(activity_id)
+    def _get_download(
+        self,
+        activity_id: str,
+        *,
+        force_refresh: bool = False,
+    ) -> GarminActivityDownload:
+        refresh = _validate_force_refresh(force_refresh)
+        cached = None if refresh else self._cache.get(activity_id)
         if cached is not None:
             self._cache.move_to_end(activity_id)
             return cached
@@ -277,10 +289,15 @@ class GarminQProMcpService:
         *,
         activity_id: str | int,
         verify_crc: bool = True,
+        force_refresh: bool = False,
     ) -> dict[str, Any]:
         normalized_id = normalize_activity_id(activity_id)
         validated_crc = _validate_verify_crc(verify_crc)
-        download = self._get_download(normalized_id)
+        validated_refresh = _validate_force_refresh(force_refresh)
+        download = self._get_download(
+            normalized_id,
+            force_refresh=validated_refresh,
+        )
         sources: list[dict[str, Any]] = []
         for source in download.sources:
             decoded = decode_fit(source, verify_crc=validated_crc)
@@ -309,12 +326,17 @@ class GarminQProMcpService:
         row_number: int,
         explicit_qpro_key: str | None = None,
         verify_crc: bool = True,
+        force_refresh: bool = False,
     ) -> dict[str, Any]:
         normalized_id = normalize_activity_id(activity_id)
         validated_row = _validate_row_number(row_number)
         normalized_key = _normalize_explicit_key(explicit_qpro_key)
         validated_crc = _validate_verify_crc(verify_crc)
-        download = self._get_download(normalized_id)
+        validated_refresh = _validate_force_refresh(force_refresh)
+        download = self._get_download(
+            normalized_id,
+            force_refresh=validated_refresh,
+        )
 
         results: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []

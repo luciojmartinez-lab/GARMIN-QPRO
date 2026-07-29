@@ -22,7 +22,13 @@ class SyntheticService:
             "limit": limit,
         }
 
-    def inspect_garmin_activity(self, *, activity_id, verify_crc=True):
+    def inspect_garmin_activity(
+        self,
+        *,
+        activity_id,
+        verify_crc=True,
+        force_refresh=False,
+    ):
         return {
             "activity_id": str(activity_id),
             "container_name": f"garmin-{activity_id}.zip",
@@ -56,6 +62,7 @@ class SyntheticService:
         row_number,
         explicit_qpro_key=None,
         verify_crc=True,
+        force_refresh=False,
     ):
         row = tuple(["ENT", *("" for _ in range(21)), "'000"])
         tsv = "\t".join(row)

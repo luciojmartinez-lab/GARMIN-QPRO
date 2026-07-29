@@ -35,8 +35,16 @@ class FakeService:
             "limit": limit,
         }
 
-    def inspect_garmin_activity(self, *, activity_id, verify_crc=True):
-        self.calls.append(("inspect", activity_id, verify_crc))
+    def inspect_garmin_activity(
+        self,
+        *,
+        activity_id,
+        verify_crc=True,
+        force_refresh=False,
+    ):
+        self.calls.append(
+            ("inspect", activity_id, verify_crc, force_refresh)
+        )
         return {
             "activity_id": str(activity_id),
             "container_name": "garmin.zip",
@@ -53,6 +61,7 @@ class FakeService:
         row_number,
         explicit_qpro_key=None,
         verify_crc=True,
+        force_refresh=False,
     ):
         self.calls.append(
             (
@@ -61,6 +70,7 @@ class FakeService:
                 row_number,
                 explicit_qpro_key,
                 verify_crc,
+                force_refresh,
             )
         )
         return {
@@ -210,12 +220,17 @@ def test_tool_inputs_have_no_secret_parameters() -> None:
 
     assert properties == {
         "list_garmin_activities": {"start", "limit"},
-        "inspect_garmin_activity": {"activity_id", "verify_crc"},
+        "inspect_garmin_activity": {
+            "activity_id",
+            "verify_crc",
+            "force_refresh",
+        },
         "convert_garmin_activity": {
             "activity_id",
             "row_number",
             "explicit_qpro_key",
             "verify_crc",
+            "force_refresh",
         },
     }
     forbidden = {"password", "mfa", "cookie", "token"}
@@ -235,7 +250,11 @@ def test_tool_calls_delegate_exact_arguments() -> None:
     inspected = _run(
         server.call_tool(
             "inspect_garmin_activity",
-            {"activity_id": "7", "verify_crc": False},
+            {
+                "activity_id": "7",
+                "verify_crc": False,
+                "force_refresh": True,
+            },
         )
     )
     converted = _run(
@@ -246,6 +265,7 @@ def test_tool_calls_delegate_exact_arguments() -> None:
                 "row_number": 36,
                 "explicit_qpro_key": "CMF",
                 "verify_crc": False,
+                "force_refresh": True,
             },
         )
     )
@@ -255,8 +275,8 @@ def test_tool_calls_delegate_exact_arguments() -> None:
     assert converted[1]["activity_id"] == "7"
     assert service.calls == [
         ("list", 2, 3),
-        ("inspect", "7", False),
-        ("convert", "7", 36, "CMF", False),
+        ("inspect", "7", False, True),
+        ("convert", "7", 36, "CMF", False, True),
     ]
 
 

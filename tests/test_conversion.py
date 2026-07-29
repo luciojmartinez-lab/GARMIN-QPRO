@@ -336,6 +336,60 @@ def test_cam_speed_filter_changes_only_vmax_and_keeps_current_schema() -> None:
     assert not result.tsv.endswith("\n")
 
 
+def test_trimmed_cam_keeps_current_tsv_schema_and_last_ovm_cell() -> None:
+    start = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    records = [
+        {
+            "timestamp": start + timedelta(seconds=index * 5),
+            "enhanced_speed": speed,
+            "distance": distance,
+            "heart_rate": heart_rate,
+            "cadence": cadence,
+        }
+        for index, (speed, distance, heart_rate, cadence) in enumerate(
+            [
+                (1.0, 0.0, 80, 40),
+                (5.0, 5.0, 90, 50),
+                (1.1, 10.0, 100, 60),
+                (1.0, 15.0, 90, 50),
+                (1.0, 20.0, 80, 40),
+            ]
+        )
+    ]
+    session = _session(
+        sport_profile_name="Caminar",
+        sport="walking",
+        start_time=start,
+        timestamp=start + timedelta(seconds=100),
+        total_timer_time=20.0,
+        total_elapsed_time=20.0,
+        total_moving_time=None,
+        total_distance=20.0,
+        enhanced_avg_speed=1.0,
+        enhanced_max_speed=9.0,
+        avg_heart_rate=90,
+        max_heart_rate=150,
+        avg_cadence=50,
+        max_cadence=90,
+        avg_power=None,
+        max_power=None,
+        avg_vertical_oscillation=70.0,
+    )
+
+    result = convert_decoded_activity(
+        _decoded(messages={"session": [session], "record": records}),
+        row_number=55,
+        explicit_qpro_key="CAM",
+    )
+
+    assert result.metrics.is_trimmed is True
+    assert result.metrics.max_speed_mps == 1.1
+    assert len(result.row.as_tuple()) == 23
+    assert result.tsv.count("\t") == 22
+    assert result.tsv.split("\t")[-1] == result.row.get("OVM") == "'07,0"
+    assert not result.tsv.endswith(("\t", "\n"))
+
+
 def test_received_row_number_is_used_in_formulas() -> None:
     result = convert_decoded_activity(
         _decoded(messages={"session": [_session()]}),

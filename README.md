@@ -156,6 +156,9 @@ Convierte la actividad indicada como CMF usando la fila 36.
 Codex no debe inventar la fila. Las claves desconocidas requieren una eleccion
 del usuario y `CURRENT_ROW_HINTS` no se consulta automaticamente. Las descargas
 permanecen en memoria y todavia no se escribe directamente en Quattro Pro.
+Despues de editar o recortar una actividad en Garmin, las herramientas de
+inspeccion y conversion aceptan `force_refresh=true` para descargar de nuevo el
+archivo original y reemplazar solamente la copia guardada en memoria.
 
 Este MCP local funciona con clientes Codex ejecutados en el mismo ordenador.
 ChatGPT web no puede utilizar directamente esta configuracion local. Una
