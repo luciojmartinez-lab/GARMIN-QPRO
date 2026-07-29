@@ -30,6 +30,7 @@ _CONFIRMED_RULES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
             ("EB5 - MOVILIDAD VALLAS", "MOF"),
             ("EB9 - Salto de altura - Competic", "CMF"),
             ("EB9 - Triple Salto - Competicion", "CMF"),
+            ("EB9 - Test PJ+TRIP+QUINT", "TST"),
             ('EB7 - SPista 3*60m-10"', "SER"),
         )
     }

@@ -654,6 +654,80 @@ def test_confirmed_eb9_workouts_use_force_conversion(
     assert result.row.get("CARGA") == "'094"
 
 
+def test_confirmed_eb9_test_uses_exact_tst_force_template() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "workout": [_workout("EB9 - Test PJ+TRIP+QUINT")],
+                "session": [
+                    _force_session(
+                        total_timer_time=1766.692,
+                        total_elapsed_time=1766.692,
+                        avg_heart_rate=116,
+                        max_heart_rate=143,
+                        total_training_effect=2.3,
+                        total_anaerobic_training_effect=2.3,
+                        training_load_peak=67.31246948242188,
+                    )
+                ],
+                "set": [
+                    {
+                        "set_type": "active",
+                        "weight": 999.0,
+                        "repetitions": 999,
+                        "total_cycles": 999,
+                    }
+                ],
+            }
+        )
+    )
+
+    assert result.activity_context.resolution.qpro_key == "TST"
+    assert result.activity_context.resolution.resolution_source == (
+        "workout_name"
+    )
+    assert result.activity_context.resolution.requires_user_choice is False
+    assert isinstance(result.metrics, ForceMetricsRaw)
+    assert result.metrics.timer_time_s == 1766.692
+    assert result.metrics.elapsed_time_s == 1766.692
+    assert result.metrics.avg_hr_bpm == 116
+    assert result.metrics.max_hr_bpm == 143
+    assert result.metrics.aerobic_te == 2.3
+    assert result.metrics.anaerobic_te == 2.3
+    assert result.metrics.exercise_load == pytest.approx(
+        67.31246948242188
+    )
+    assert result.row.as_tuple() == (
+        "TST",
+        "",
+        "",
+        build_vmed_ms_formula(),
+        "",
+        "",
+        build_vmax_ms_formula(),
+        "0,00",
+        "'116",
+        "'143",
+        "'029",
+        "'00,00",
+        "2,3",
+        "2,3",
+        "'000",
+        "'000",
+        "0,00",
+        "'000",
+        "'067",
+        "'000",
+        "'000",
+        "'000",
+        "'000",
+    )
+    assert result.tsv.count("\t") == 22
+    assert len(result.tsv.split("\t")) == 23
+    assert result.tsv.endswith("'000")
+    assert not result.tsv.endswith(("\t", "\n", "\r"))
+
+
 def test_unknown_eb9_workout_still_requires_choice() -> None:
     decoded = _decoded(
         messages={

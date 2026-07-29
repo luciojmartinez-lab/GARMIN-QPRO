@@ -174,6 +174,7 @@ Si no aparece:
 | `EB1 - Carrera Técnica-Triple` | `ENT` |
 | `EB1 - Carrera Tec Triple` | `ENT` |
 | `EB7 - SPista 3*60m-10"` | `SER` |
+| `EB9 - Test PJ+TRIP+QUINT` | `TST` |
 
 Regla contextual:
 
