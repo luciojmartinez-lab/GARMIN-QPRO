@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from math import isclose
 from typing import Any, Literal
 
 from garmin_qpro.fit.models import DecodedFit
+from garmin_qpro.fit.speed_filter import (
+    SOFT_SPEED_FILTER_KEYS,
+    filter_soft_activity_max_speed,
+)
 
 SOURCE_SESSION: Literal["session"] = "session"
 SOURCE_CAL_WARMUP_LAPS: Literal["cal_warmup_laps"] = "cal_warmup_laps"
@@ -388,7 +392,7 @@ def _apply_cal_warmup_metrics(
     warmups: tuple[Mapping[Any, Any], ...],
 ) -> RunningMetricsRaw:
     warmup_count = len(warmups)
-    requires_review = warmup_count == 0
+    requires_review = metrics.requires_manual_review or warmup_count == 0
     return RunningMetricsRaw(
         timer_time_s=metrics.timer_time_s,
         moving_time_s=metrics.moving_time_s,
@@ -474,6 +478,20 @@ def extract_running_metrics(
         moving_time_s,
         source_scope=source_scope,
     )
+    if normalized_key in SOFT_SPEED_FILTER_KEYS:
+        speed_result = filter_soft_activity_max_speed(
+            decoded.get_messages("record"),
+            original_max_speed_mps=metrics.max_speed_mps,
+            average_speed_mps=metrics.avg_speed_mps,
+        )
+        metrics = replace(
+            metrics,
+            max_speed_mps=speed_result.max_speed_mps,
+            requires_manual_review=(
+                metrics.requires_manual_review
+                or speed_result.requires_manual_review
+            ),
+        )
     if normalized_key != "CAL":
         return metrics
 

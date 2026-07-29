@@ -288,6 +288,54 @@ def test_cam_conversion_rejects_unreliable_time_before_building_row() -> None:
         )
 
 
+def test_cam_speed_filter_changes_only_vmax_and_keeps_current_schema() -> None:
+    start = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    records = [
+        {
+            "timestamp": start + timedelta(seconds=index * 5),
+            "enhanced_speed": speed,
+            "distance": distance,
+        }
+        for index, (speed, distance) in enumerate(
+            zip(
+                [1.0, 5.0, 1.1, 1.0, 1.0],
+                [0.0, 5.0, 10.0, 15.0, 20.0],
+            )
+        )
+    ]
+    session = _session(
+        sport_profile_name="Caminar",
+        sport="walking",
+        total_timer_time=5152.979,
+        total_elapsed_time=5152.979,
+        total_moving_time=None,
+        total_distance=3577.58,
+        enhanced_avg_speed=0.694,
+        enhanced_max_speed=5.0,
+        avg_vertical_oscillation=70.0,
+    )
+    result = convert_decoded_activity(
+        _decoded(messages={"session": [session], "record": records}),
+        row_number=55,
+        explicit_qpro_key="CAM",
+    )
+
+    assert result.metrics.timer_time_s == 5152.979
+    assert result.metrics.moving_time_s == 5152.979
+    assert result.metrics.distance_m == 3577.58
+    assert result.metrics.avg_speed_mps == 0.694
+    assert result.metrics.max_speed_mps == 1.1
+    assert result.row.get("VMED") == "2,50"
+    assert result.row.get("VMAX") == "3,96"
+    assert result.row.get("MIN") == "'086"
+    assert result.row.get("RITMO") == "'24,00"
+    assert len(result.row.as_tuple()) == 23
+    assert result.tsv.count("\t") == 22
+    assert result.tsv.split("\t")[-1] == result.row.get("OVM")
+    assert not result.tsv.endswith("\t")
+    assert not result.tsv.endswith("\n")
+
+
 def test_received_row_number_is_used_in_formulas() -> None:
     result = convert_decoded_activity(
         _decoded(messages={"session": [_session()]}),

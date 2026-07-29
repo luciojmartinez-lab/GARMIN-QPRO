@@ -269,6 +269,136 @@ def test_cam_rejects_missing_or_incoherent_session_time(session) -> None:
         )
 
 
+def _speed_filter_records(*, sustained: bool = False):
+    start = datetime(2026, 7, 6, tzinfo=timezone.utc)
+    if sustained:
+        speeds = [1.0, 5.0, 5.2, 5.1, 1.0]
+        distances = [0.0, 25.0, 51.0, 76.5, 81.5]
+    else:
+        speeds = [1.0, 5.0, 1.1, 1.0, 1.0]
+        distances = [0.0, 5.0, 10.0, 15.0, 20.0]
+    return [
+        {
+            "timestamp": start + timedelta(seconds=index * 5),
+            "enhanced_speed": speed,
+            "distance": distance,
+        }
+        for index, (speed, distance) in enumerate(zip(speeds, distances))
+    ]
+
+
+@pytest.mark.parametrize(
+    "qpro_key",
+    ["AQG", "CAM", "CAL", "CLP", "FIN", "FPN", "MOV", "PLY"],
+)
+def test_soft_activity_keys_filter_isolated_speed_peak(qpro_key: str) -> None:
+    session = _session(
+        total_timer_time=100.0,
+        total_elapsed_time=100.0,
+        total_moving_time=80.0,
+        total_distance=100.0,
+        enhanced_avg_speed=1.0,
+        enhanced_max_speed=5.0,
+    )
+    messages = {
+        "session": [session],
+        "record": _speed_filter_records(),
+    }
+    if qpro_key == "CAL":
+        messages["lap"] = [
+            {
+                "intensity": "warmup",
+                "total_timer_time": 10.0,
+                "avg_cadence": 70,
+            }
+        ]
+
+    metrics = extract_running_metrics(
+        _decoded(messages),
+        qpro_key=qpro_key,
+    )
+
+    assert metrics.max_speed_mps == 1.1
+    assert metrics.requires_manual_review is False
+
+
+@pytest.mark.parametrize("qpro_key", ["ENT", "SER", "FLK"])
+def test_fast_running_keys_do_not_filter_same_peak(qpro_key: str) -> None:
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [
+                    _session(
+                        total_moving_time=80.0,
+                        enhanced_avg_speed=1.0,
+                        enhanced_max_speed=5.0,
+                    )
+                ],
+                "record": _speed_filter_records(),
+            }
+        ),
+        qpro_key=qpro_key,
+    )
+
+    assert metrics.max_speed_mps == 5.0
+    assert metrics.requires_manual_review is False
+
+
+def test_soft_activity_keeps_sustained_high_speed() -> None:
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [
+                    _session(
+                        total_timer_time=100.0,
+                        total_elapsed_time=100.0,
+                        total_moving_time=80.0,
+                        total_distance=100.0,
+                        enhanced_avg_speed=1.0,
+                        enhanced_max_speed=5.2,
+                    )
+                ],
+                "record": _speed_filter_records(sustained=True),
+            }
+        ),
+        qpro_key="CAM",
+    )
+
+    assert metrics.max_speed_mps == 5.2
+    assert metrics.requires_manual_review is False
+
+
+def test_soft_activity_without_neighbors_keeps_maximum_for_review() -> None:
+    start = datetime(2026, 7, 6, tzinfo=timezone.utc)
+    metrics = extract_running_metrics(
+        _decoded(
+            {
+                "session": [
+                    _session(
+                        total_timer_time=100.0,
+                        total_elapsed_time=100.0,
+                        total_moving_time=80.0,
+                        total_distance=100.0,
+                        enhanced_avg_speed=1.0,
+                        enhanced_max_speed=5.0,
+                    )
+                ],
+                "record": [
+                    {
+                        "timestamp": start,
+                        "enhanced_speed": 5.0,
+                        "distance": 0.0,
+                    }
+                ],
+            }
+        ),
+        qpro_key="CAM",
+    )
+
+    assert metrics.max_speed_mps == 5.0
+    assert metrics.requires_manual_review is True
+
+
 def test_record_order_and_invalid_intervals_are_handled() -> None:
     start = datetime(2026, 7, 6, tzinfo=timezone.utc)
     records = [
