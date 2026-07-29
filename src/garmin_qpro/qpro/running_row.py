@@ -129,6 +129,36 @@ def _rounded_text_integer(value: float | None) -> str:
     return empty_or_formatted(value, format_text_integer)
 
 
+_CAM_NEUTRAL_VALUES = {
+    "RMED": format_decimal(0, 2),
+    "VMED": format_decimal(0, 2),
+    "RMAX": format_decimal(0, 2),
+    "VMAX": format_decimal(0, 2),
+    "DISTANCIA": format_decimal(0, 2),
+    "PPME": format_text_integer(0),
+    "PPMAX": format_text_integer(0),
+    "MIN": format_text_integer(0),
+    "RITMO": format_text_pace(0),
+    "AER": format_decimal(0, 1),
+    "ANA": format_decimal(0, 1),
+    "CADM": format_text_integer(0),
+    "CADX": format_text_integer(0),
+    "ZAN": format_decimal(0, 2),
+    "TCS": format_text_integer(0),
+    "CARGA": format_text_integer(0),
+    "PTM": format_text_integer(0),
+    "PTX": format_text_integer(0),
+    "RVM": format_text_decimal(0, 1, width=2),
+    "OVM": format_text_decimal(0, 1, width=2),
+}
+
+
+def _apply_cam_neutral_values(values: dict[str, str]) -> None:
+    for column, neutral in _CAM_NEUTRAL_VALUES.items():
+        if values[column] == "":
+            values[column] = neutral
+
+
 def build_running_row(
     key: str,
     row_number: object | RunningMetricsRaw | None = None,
@@ -203,4 +233,6 @@ def build_running_row(
             lambda value: format_text_decimal(value / 10, 1, width=2),
         ),
     }
+    if normalized_key == "CAM":
+        _apply_cam_neutral_values(values)
     return QProRow(values[column] for column in QPRO_COLUMNS)

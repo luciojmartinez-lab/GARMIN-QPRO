@@ -365,7 +365,8 @@ Formatos:
 | RVM | apóstrofo + decimal | `'10,1` |
 | OVM | apóstrofo + decimal | `'08,8` |
 
-No convertir automáticamente un campo ausente en `'000`.
+No convertir automáticamente un campo ausente en `'000`, salvo en las
+plantillas que definan valores neutros obligatorios, como fuerza y `CAM`.
 
 ---
 
@@ -417,6 +418,22 @@ valores de entrada:
 - en carrera/calientamiento se rellenan VMED, VMAX, RMED o RMAX cuando existen;
 - en fuerza se dejan vacíos VMED y VMAX, y las fórmulas robustas devuelven
   `0,00` sin error.
+
+## 11.5 Valores neutros obligatorios de CAM
+
+En `CAM`, una métrica ausente no deja una celda vacía. Se conserva cualquier
+valor real y solo se sustituye la ausencia por el neutro de su columna:
+
+| Campo | Neutro |
+|---|---|
+| RMED / VMED / RMAX / VMAX / DISTANCIA / ZAN | `0,00` |
+| PPME / PPMAX / MIN / CADM / CADX / TCS / CARGA / PTM / PTX | `'000` |
+| RITMO | `'00,00` |
+| AER / ANA | `0,0` |
+| RVM / OVM | `'00,0` |
+
+Las columnas `VMED M/S` y `VMAX M/S` conservan siempre sus fórmulas relativas;
+nunca se sustituyen por un valor neutro.
 
 # 12. Tiempo en movimiento
 

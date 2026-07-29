@@ -288,6 +288,120 @@ def test_missing_metrics_are_empty_cells() -> None:
         assert row.get(column) == ""
 
 
+def test_cam_with_all_metrics_preserves_real_values() -> None:
+    row = build_running_row("CAM", _metrics())
+
+    assert row.get("RMED") == "0,00"
+    assert row.get("VMED") == "5,83"
+    assert row.get("RMAX") == "0,00"
+    assert row.get("VMAX") == "7,05"
+    assert row.get("DISTANCIA") == "1,06"
+    assert row.get("PPME") == "'096"
+    assert row.get("PPMAX") == "'115"
+    assert row.get("MIN") == "'011"
+    assert row.get("RITMO") == "'10,17"
+    assert row.get("AER") == "0,7"
+    assert row.get("ANA") == "0,0"
+    assert row.get("CADM") == "'139"
+    assert row.get("CADX") == "'163"
+    assert row.get("ZAN") == "0,67"
+    assert row.get("TCS") == "'339"
+    assert row.get("CARGA") == "'008"
+    assert row.get("PTM") == "'156"
+    assert row.get("PTX") == "'215"
+    assert row.get("RVM") == "'11,4"
+    assert row.get("OVM") == "'07,6"
+
+
+def test_cam_with_missing_metrics_uses_exact_neutral_values() -> None:
+    row = build_running_row(
+        "CAM",
+        _metrics(
+            moving_time_s=None,
+            distance_m=None,
+            max_speed_mps=None,
+            avg_hr_bpm=None,
+            max_hr_bpm=None,
+            aerobic_te=None,
+            anaerobic_te=None,
+            avg_cadence_raw=None,
+            max_cadence_raw=None,
+            avg_step_length_mm=None,
+            avg_stance_time_ms=None,
+            exercise_load=None,
+            avg_power_w=None,
+            max_power_w=None,
+            avg_vertical_ratio_pct=None,
+            avg_vertical_oscillation_mm=None,
+        ),
+    )
+
+    assert row.as_tuple() == (
+        "CAM",
+        "0,00",
+        "0,00",
+        build_vmed_ms_formula(),
+        "0,00",
+        "0,00",
+        build_vmax_ms_formula(),
+        "0,00",
+        "'000",
+        "'000",
+        "'000",
+        "'00,00",
+        "0,0",
+        "0,0",
+        "'000",
+        "'000",
+        "0,00",
+        "'000",
+        "'000",
+        "'000",
+        "'000",
+        "'00,0",
+        "'00,0",
+    )
+    assert all(row.get(column) != "" for column in QPRO_COLUMNS)
+
+
+def test_cam_replaces_only_missing_metrics_with_neutrals() -> None:
+    row = build_running_row(
+        "CAM",
+        _metrics(
+            avg_step_length_mm=None,
+            avg_power_w=None,
+            avg_vertical_ratio_pct=None,
+        ),
+    )
+
+    assert row.get("ZAN") == "0,00"
+    assert row.get("PTM") == "'000"
+    assert row.get("RVM") == "'00,0"
+    assert row.get("PPME") == "'096"
+    assert row.get("VMED") == "5,83"
+    assert row.get("OVM") == "'07,6"
+
+
+def test_cam_tsv_has_current_shape_and_no_trailing_separator() -> None:
+    row = build_running_row(
+        "CAM",
+        _metrics(
+            avg_step_length_mm=None,
+            avg_stance_time_ms=None,
+            avg_power_w=None,
+            max_power_w=None,
+            avg_vertical_ratio_pct=None,
+            avg_vertical_oscillation_mm=None,
+        ),
+    )
+    line = row_to_tsv(row)
+
+    assert len(line.split("\t")) == 23
+    assert line.count("\t") == 22
+    assert line.split("\t")[-1] == row.get("OVM") == "'00,0"
+    assert not line.endswith(("\t", "\n", "\r"))
+
+
 def test_cal_manual_review_can_build_partial_row() -> None:
     row = build_running_row(
         "CAL",
