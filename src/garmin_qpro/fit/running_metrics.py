@@ -27,7 +27,6 @@ SOURCE_SESSION: Literal["session"] = "session"
 SOURCE_CAL_WARMUP_LAPS: Literal["cal_warmup_laps"] = "cal_warmup_laps"
 SOURCE_WORKOUT_INTERVALS: Literal["workout_intervals"] = "workout_intervals"
 WORKOUT_INTERVAL_KEYS = frozenset({"ENT", "FLK", "SER"})
-FLK_MAX_WORKOUT_INTERVALS = 4
 MOVING_SPEED_THRESHOLD_MPS = 0.3
 MAX_RECORD_SAMPLE_GAP_S = 2.0
 CAM_MAX_AVERAGE_SPEED_MPS = 5.0
@@ -860,14 +859,7 @@ def extract_running_metrics(
             ),
         )
     if normalized_key in WORKOUT_INTERVAL_KEYS:
-        selection = select_running_workout_intervals(
-            decoded,
-            limit=(
-                FLK_MAX_WORKOUT_INTERVALS
-                if normalized_key == "FLK"
-                else None
-            ),
-        )
+        selection = select_running_workout_intervals(decoded)
         if selection.count > 0:
             return _apply_workout_interval_metrics(
                 metrics,
