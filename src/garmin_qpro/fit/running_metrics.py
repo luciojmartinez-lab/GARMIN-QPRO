@@ -28,6 +28,8 @@ CAM_SPEED_REL_TOLERANCE = 0.05
 CAM_SPEED_ABS_TOLERANCE_MPS = 0.05
 CAM_ELAPSED_TOLERANCE_S = 2.0
 TRIMMED_TIMER_RECORD_TOLERANCE_S = 15.0
+TRIMMED_CADENCE_MAX_REL_TOLERANCE = 0.10
+TRIMMED_CADENCE_MAX_ABS_TOLERANCE = 5.0
 
 
 class UnreliableCamTimeError(ValueError):
@@ -477,6 +479,25 @@ def _trimmed_average_speed_is_coherent(
     )
 
 
+def _trimmed_cadence_maximum(
+    summary_max: float | None,
+    record_max: float | None,
+) -> float | None:
+    if record_max is None:
+        return None
+    if summary_max is None or summary_max <= record_max:
+        return record_max
+    tolerance = max(
+        TRIMMED_CADENCE_MAX_ABS_TOLERANCE,
+        record_max * TRIMMED_CADENCE_MAX_REL_TOLERANCE,
+    )
+    return (
+        summary_max
+        if summary_max - record_max <= tolerance
+        else record_max
+    )
+
+
 def _limit_metrics_to_record_segment(
     metrics: RunningMetricsRaw,
     audit: RecordSegmentAudit,
@@ -529,7 +550,10 @@ def _limit_metrics_to_record_segment(
         avg_hr_bpm=avg_hr,
         max_hr_bpm=audit.max_heart_rate_bpm,
         avg_cadence_raw=avg_cadence,
-        max_cadence_raw=audit.max_cadence_raw,
+        max_cadence_raw=_trimmed_cadence_maximum(
+            metrics.max_cadence_raw,
+            audit.max_cadence_raw,
+        ),
         avg_power_w=avg_power,
         max_power_w=(
             int(audit.max_power_w)

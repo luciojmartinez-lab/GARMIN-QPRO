@@ -91,6 +91,37 @@ def test_sustained_high_speed_with_spatial_continuity_is_kept() -> None:
     assert result.requires_manual_review is False
 
 
+def test_summary_maximum_absent_from_records_uses_record_maximum_first() -> None:
+    records = _records([1.0, 5.0, 1.1, 1.0, 1.0])
+
+    result = filter_soft_activity_max_speed(
+        records,
+        original_max_speed_mps=9.0,
+        average_speed_mps=1.0,
+    )
+
+    assert result.max_speed_mps == 1.1
+    assert result.discarded_speeds_mps == (5.0,)
+    assert result.requires_manual_review is False
+
+
+def test_unconfirmed_summary_does_not_replace_sustained_record_maximum() -> None:
+    records = _records(
+        [1.0, 5.0, 5.2, 5.1, 1.0],
+        interval_rates=[5.0, 5.2, 5.1, 1.0],
+    )
+
+    result = filter_soft_activity_max_speed(
+        records,
+        original_max_speed_mps=9.0,
+        average_speed_mps=1.0,
+    )
+
+    assert result.max_speed_mps == 5.2
+    assert result.discarded_speeds_mps == ()
+    assert result.requires_manual_review is False
+
+
 def test_irregular_smart_recording_gaps_are_supported() -> None:
     records = _records(
         [1.0, 5.0, 1.1, 1.0, 1.0],
@@ -121,6 +152,20 @@ def test_maximum_without_sufficient_neighbors_is_kept_for_review() -> None:
     assert result.requires_manual_review is True
 
 
+def test_unconfirmed_summary_with_insufficient_records_is_kept_for_review() -> None:
+    records = _records([1.0, 5.0])
+
+    result = filter_soft_activity_max_speed(
+        records,
+        original_max_speed_mps=9.0,
+        average_speed_mps=1.0,
+    )
+
+    assert result.max_speed_mps == 9.0
+    assert result.discarded_speeds_mps == ()
+    assert result.requires_manual_review is True
+
+
 @pytest.mark.parametrize(
     ("original_max", "average_speed"),
     [(None, 1.0), (5.0, None), (5.0, 0.0)],
@@ -139,9 +184,9 @@ def test_missing_summary_evidence_preserves_original_for_review(
     assert result.requires_manual_review is True
 
 
-def test_non_suspicious_ratio_does_not_require_record_filtering() -> None:
+def test_non_suspicious_record_backed_maximum_is_kept() -> None:
     result = filter_soft_activity_max_speed(
-        (),
+        _records([1.0, 2.5, 5.0], interval_rates=[2.5, 5.0]),
         original_max_speed_mps=5.0,
         average_speed_mps=2.0,
     )

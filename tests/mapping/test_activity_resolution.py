@@ -58,6 +58,20 @@ def test_running_profile_without_known_workout_resolves_ent(
     assert resolution.requires_user_choice is False
 
 
+@pytest.mark.parametrize("profile", ["Caminar", "walking", "  CAMINAR  "])
+def test_walking_profile_without_known_workout_resolves_cam(
+    profile: str,
+) -> None:
+    resolution = resolve_activity(
+        workout_name=None,
+        sport_profile_name=profile,
+    )
+
+    assert resolution.qpro_key == "CAM"
+    assert resolution.resolution_source == SPORT_PROFILE_NAME_SOURCE
+    assert resolution.requires_user_choice is False
+
+
 def test_unresolved_workout_falls_back_to_running_profile() -> None:
     resolution = resolve_activity(
         workout_name="Entrenamiento libre",

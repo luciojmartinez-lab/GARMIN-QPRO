@@ -265,6 +265,34 @@ def test_cam_conversion_uses_coherent_session_time_and_current_schema() -> None:
     assert not result.tsv.endswith("\t")
 
 
+def test_cam_conversion_resolves_walking_profile_without_explicit_key() -> None:
+    result = convert_decoded_activity(
+        _decoded(
+            messages={
+                "session": [
+                    _session(
+                        sport_profile_name="Caminar",
+                        sport="walking",
+                        total_timer_time=100.0,
+                        total_moving_time=None,
+                        total_distance=100.0,
+                        enhanced_avg_speed=1.0,
+                        enhanced_max_speed=2.0,
+                    )
+                ],
+            }
+        ),
+    )
+
+    assert result.activity_context.resolution.qpro_key == "CAM"
+    assert (
+        result.activity_context.resolution.resolution_source
+        == "sport_profile_name"
+    )
+    assert result.activity_context.resolution.requires_user_choice is False
+    assert result.row.get("CODIGO") == "CAM"
+
+
 def test_cam_conversion_rejects_unreliable_time_before_building_row() -> None:
     with pytest.raises(UnreliableCamTimeError):
         convert_decoded_activity(

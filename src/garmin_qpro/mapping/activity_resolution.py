@@ -11,12 +11,12 @@ EXPLICIT_QPRO_KEY_SOURCE: Final[str] = "explicit_qpro_key"
 WORKOUT_NAME_SOURCE: Final[str] = "workout_name"
 SPORT_PROFILE_NAME_SOURCE: Final[str] = "sport_profile_name"
 
-_RUNNING_PROFILES: Final[frozenset[str]] = frozenset(
-    {
-        "carrera",
-        "running",
-    }
-)
+_PROFILE_QPRO_KEYS: Final[dict[str, str]] = {
+    "carrera": "ENT",
+    "running": "ENT",
+    "caminar": "CAM",
+    "walking": "CAM",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,11 +88,12 @@ def resolve_activity(
         if sport_profile_name is not None
         else ""
     )
-    if normalized_profile in _RUNNING_PROFILES:
+    profile_qpro_key = _PROFILE_QPRO_KEYS.get(normalized_profile)
+    if profile_qpro_key is not None:
         return _resolved(
             workout_name=workout_name,
             sport_profile_name=sport_profile_name,
-            qpro_key="ENT",
+            qpro_key=profile_qpro_key,
             resolution_source=SPORT_PROFILE_NAME_SOURCE,
         )
 

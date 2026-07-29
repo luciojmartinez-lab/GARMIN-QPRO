@@ -441,6 +441,21 @@ def test_trimmed_soft_activity_uses_record_maxima_then_peak_filter() -> None:
     assert metrics.requires_manual_review is True
 
 
+def test_trimmed_activity_preserves_close_session_cadence_maximum() -> None:
+    messages = _trimmed_messages()
+    messages["session"][0].update(
+        max_cadence=74,
+        max_fractional_cadence=0.0,
+    )
+
+    metrics = extract_running_metrics(
+        _decoded(messages),
+        qpro_key="CAM",
+    )
+
+    assert metrics.max_cadence_raw == 74.0
+
+
 def test_trimmed_fast_activity_uses_real_high_record_without_soft_filter() -> None:
     metrics = extract_running_metrics(
         _decoded(_trimmed_messages()),
@@ -639,7 +654,7 @@ def test_cal_with_one_warmup_lap_uses_lap_special_metrics() -> None:
 
     assert metrics.source_scope == "cal_warmup_laps"
     assert metrics.warmup_lap_count == 1
-    assert metrics.requires_manual_review is False
+    assert metrics.requires_manual_review is True
     assert metrics.avg_cadence_raw == 70.5
     assert metrics.max_cadence_raw == 90.25
     assert metrics.avg_step_length_mm == 800.0

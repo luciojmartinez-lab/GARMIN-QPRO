@@ -258,8 +258,6 @@ def filter_soft_activity_max_speed(
         return SpeedFilterResult(original_max, True)
     if average_speed is None or average_speed <= 0:
         return SpeedFilterResult(original_max, True)
-    if original_max <= average_speed * SUSPICIOUS_MAX_TO_AVERAGE_RATIO:
-        return SpeedFilterResult(original_max, False)
 
     samples = _record_samples(records)
     max_gap = _continuity_gap(samples)
@@ -267,14 +265,16 @@ def filter_soft_activity_max_speed(
         return SpeedFilterResult(original_max, True)
 
     record_max = max(sample.speed_mps for sample in samples)
-    if not (
+    summary_is_record_backed = (
         abs(record_max - original_max)
         <= max(
             ORIGINAL_MAX_ABS_TOLERANCE_MPS,
             original_max * ORIGINAL_MAX_REL_TOLERANCE,
         )
-    ):
-        return SpeedFilterResult(original_max, True)
+    )
+    candidate_max = original_max if summary_is_record_backed else record_max
+    if candidate_max <= average_speed * SUSPICIOUS_MAX_TO_AVERAGE_RATIO:
+        return SpeedFilterResult(candidate_max, False)
 
     interval_rates = _interval_rates(samples, max_gap_s=max_gap)
     excluded: set[int] = set()
