@@ -12,6 +12,11 @@ from .reader import (
     GarminConnectReader,
     connect_garmin,
 )
+from .session import (
+    GarminDesktopSession,
+    KeyringSessionVault,
+    StoredGarminSession,
+)
 
 __all__ = [
     "DEFAULT_TOKEN_STORE",
@@ -23,4 +28,7 @@ __all__ = [
     "GarminIntegrationUnavailableError",
     "GarminResponseError",
     "connect_garmin",
+    "GarminDesktopSession",
+    "KeyringSessionVault",
+    "StoredGarminSession",
 ]

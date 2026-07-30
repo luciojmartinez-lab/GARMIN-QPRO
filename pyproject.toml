@@ -13,6 +13,9 @@ dependencies = ["garmin-fit-sdk>=21.208,<22"]
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 desktop = [
+    "customtkinter>=5.2,<6",
+    "garminconnect>=0.3.6,<0.4",
+    "keyring>=25,<26",
     "tkinterdnd2>=0.4.3,<1",
 ]
 build = [

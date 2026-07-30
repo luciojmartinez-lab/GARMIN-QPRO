@@ -52,3 +52,11 @@ data/raw/
 data/processed/
 data/output/
 data/private/
+
+# Local desktop state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.garmin-qpro-desktop/

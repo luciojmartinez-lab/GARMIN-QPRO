@@ -25,6 +25,9 @@ if ($LASTEXITCODE -ne 0) {
     --windowed `
     --name "GARMIN-QPRO" `
     --additional-hooks-dir $HookDirectory `
+    --hidden-import "garminconnect" `
+    --hidden-import "keyring" `
+    --hidden-import "keyring.backends.Windows" `
     --specpath $BuildDirectory `
     --workpath $BuildDirectory `
     --distpath $DistDirectory `
