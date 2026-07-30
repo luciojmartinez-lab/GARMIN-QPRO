@@ -14,9 +14,14 @@ from garmin_qpro.input.zip_loader import load_zip_fit_sources_bytes
 
 from .errors import (
     GarminAuthenticationError,
+    GarminChallengeError,
     GarminConnectionError,
     GarminIntegrationUnavailableError,
+    GarminNetworkError,
+    GarminRateLimitError,
     GarminResponseError,
+    extract_http_status,
+    exception_chain,
 )
 from .models import (
     GarminActivityDownload,
@@ -61,19 +66,34 @@ def _raise_remote_error(
     *,
     operation: str,
 ) -> None:
-    if isinstance(exc, bindings.authentication_error):
+    if isinstance(exc, GarminConnectionError):
+        raise exc
+    status = extract_http_status(exc)
+    text = " ".join(str(item) for item in exception_chain(exc)).casefold()
+    if isinstance(exc, bindings.too_many_requests_error):
+        raise GarminRateLimitError(
+            "Garmin Connect rate limit exceeded"
+        ) from exc
+    if status == 429:
+        raise GarminRateLimitError(
+            "Garmin Connect rate limit exceeded"
+        ) from exc
+    if status in {403, 503} and any(
+        marker in text
+        for marker in ("cloudflare", "captcha", "challenge", "bot", "access denied")
+    ):
+        raise GarminChallengeError(
+            "Garmin Connect security challenge blocked the request"
+        ) from exc
+    if isinstance(exc, bindings.authentication_error) or status == 401:
         raise GarminAuthenticationError(
             "Garmin Connect authentication failed"
         ) from exc
-    if isinstance(exc, bindings.too_many_requests_error):
-        raise GarminConnectionError(
-            "Garmin Connect rate limit exceeded"
-        ) from exc
     if isinstance(exc, bindings.connection_error):
-        raise GarminConnectionError(
+        raise GarminNetworkError(
             f"Garmin Connect {operation} failed"
         ) from exc
-    raise GarminConnectionError(
+    raise GarminNetworkError(
         f"Garmin Connect {operation} failed"
     ) from exc
 

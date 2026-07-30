@@ -12,7 +12,10 @@ from typing import Protocol
 from .errors import (
     GarminAuthenticationError,
     GarminConnectionError,
+    GarminCredentialStoreError,
     GarminIntegrationUnavailableError,
+    GarminInvalidSessionError,
+    GarminMfaCancelledError,
 )
 from .reader import (
     GarminConnectReader,
@@ -75,7 +78,7 @@ class KeyringSessionVault:
         try:
             payload = keyring.get_password(self.service, self.account)
         except Exception as exc:
-            raise GarminConnectionError(
+            raise GarminCredentialStoreError(
                 "Windows credential storage could not be read"
             ) from exc
         if not payload:
@@ -87,7 +90,7 @@ class KeyringSessionVault:
             if not isinstance(email, str) or not isinstance(token_data, str):
                 raise TypeError
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
-            raise GarminAuthenticationError(
+            raise GarminInvalidSessionError(
                 "Stored Garmin session is invalid"
             ) from exc
         return StoredGarminSession(email=email, token_data=token_data)
@@ -104,7 +107,7 @@ class KeyringSessionVault:
         try:
             keyring.set_password(self.service, self.account, payload)
         except Exception as exc:
-            raise GarminConnectionError(
+            raise GarminCredentialStoreError(
                 "Windows credential storage could not save the Garmin session"
             ) from exc
 
@@ -120,7 +123,7 @@ class KeyringSessionVault:
             )
             if not_found and isinstance(exc, not_found):
                 return
-            raise GarminConnectionError(
+            raise GarminCredentialStoreError(
                 "Windows credential storage could not clear the Garmin session"
             ) from exc
 
@@ -218,7 +221,16 @@ class GarminDesktopSession:
             else:
                 client.login(tokenstore=token_data)
         except Exception as exc:
-            _raise_remote_error(exc, bindings, operation="login")
+            if isinstance(exc, GarminMfaCancelledError):
+                raise
+            try:
+                _raise_remote_error(exc, bindings, operation="login")
+            except GarminAuthenticationError as auth_error:
+                if token_data is not None:
+                    raise GarminInvalidSessionError(
+                        "Stored Garmin session was rejected"
+                    ) from auth_error
+                raise
         self._client = client
         self._reader = GarminConnectReader(client, _bindings=bindings)
         self.email = email
@@ -228,11 +240,11 @@ class GarminDesktopSession:
         try:
             token_data = client.client.dumps()
         except Exception as exc:
-            raise GarminConnectionError(
+            raise GarminCredentialStoreError(
                 "Garmin session tokens could not be secured"
             ) from exc
         if not isinstance(token_data, str) or len(token_data) <= 512:
-            raise GarminConnectionError(
+            raise GarminCredentialStoreError(
                 "Garmin returned an invalid reusable session"
             )
         return token_data

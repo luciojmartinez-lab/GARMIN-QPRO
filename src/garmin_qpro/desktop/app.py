@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-import threading
-import tkinter as tk
 import os
 import sys
+import threading
+import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 import customtkinter as ctk
 
+from garmin_qpro.garmin import (
+    DEFAULT_TOKEN_STORE,
+    GarminMfaCancelledError,
+    connect_garmin,
+    diagnose_login_error,
+    garminconnect_package_version,
+)
 from garmin_qpro.history import (
     CONVERTER_VERSION,
     HistoryFilters,
@@ -20,6 +27,7 @@ from garmin_qpro.history import (
 )
 
 from .controller import DesktopActivityStatus, DesktopActivityView, parse_drop_paths
+from .dialogs import GarminDiagnosticDialog, GarminLoginDialog, GarminMfaDialog
 from .presentation import (
     STATUS_LABELS,
     display_activity_name,
@@ -743,7 +751,14 @@ class GarminQProDesktopApp:
             text_color=MUTED,
             font=(FONT, 9),
             anchor="w",
-        ).grid(row=2, column=0, padx=16, pady=(0, 16), sticky="ew")
+        ).grid(row=2, column=0, padx=16, pady=(0, 5), sticky="ew")
+        ctk.CTkLabel(
+            storage_card,
+            text=f"garminconnect {garminconnect_package_version()}",
+            text_color=MUTED,
+            font=(FONT, 9),
+            anchor="w",
+        ).grid(row=3, column=0, padx=16, pady=(0, 16), sticky="ew")
 
     def _make_tree(
         self,
@@ -827,7 +842,7 @@ class GarminQProDesktopApp:
             "Restaurando la sesión de Garmin...",
             self.workspace.restore_garmin,
             lambda restored: self._after_restore(bool(restored)),
-            quiet_error=True,
+            on_error=self._show_garmin_login_error,
         )
 
     def _after_restore(self, restored: bool) -> None:
@@ -836,48 +851,32 @@ class GarminQProDesktopApp:
             self._refresh_remote()
 
     def _connect_garmin(self) -> None:
-        email = simpledialog.askstring(
-            "Garmin Connect",
-            "Correo de Garmin:",
-            parent=self.root,
-        )
-        if not email:
-            return
-        password = simpledialog.askstring(
-            "Garmin Connect",
-            "Contraseña:",
-            show="•",
-            parent=self.root,
-        )
-        if not password:
+        credentials = GarminLoginDialog(self.root).show()
+        if credentials is None:
             return
 
         def prompt_mfa() -> str:
-            code = simpledialog.askstring(
-                "Verificación Garmin",
-                "Código de verificación:",
-                parent=self.root,
-            )
-            return code or ""
+            code = GarminMfaDialog(self.root).show()
+            if not code:
+                raise GarminMfaCancelledError(
+                    "Garmin verification was cancelled"
+                )
+            return code
 
         self.status_var.set("Conectando con Garmin...")
         self.root.update_idletasks()
         try:
             self.workspace.connect_garmin(
-                email=email,
-                password=password,
+                email=credentials.email,
+                password=credentials.password,
                 prompt_mfa=prompt_mfa,
             )
-        except Exception:
-            messagebox.showerror(
-                "No se pudo conectar",
-                "Garmin no ha aceptado la conexión. Revisa tus datos e inténtalo de nuevo.",
-                parent=self.root,
-            )
-            self.status_var.set("Conexión no completada")
+        except Exception as exc:
+            self._refresh_connection()
+            self._show_garmin_login_error(exc)
             return
         finally:
-            password = ""
+            credentials = None
         self._refresh_connection()
         self._refresh_remote()
 
@@ -1270,6 +1269,7 @@ class GarminQProDesktopApp:
         on_success: Callable[[Any], None],
         *,
         quiet_error: bool = False,
+        on_error: Callable[[Exception], None] | None = None,
     ) -> None:
         if self._busy:
             self.status_var.set("Hay una operación en curso")
@@ -1286,6 +1286,7 @@ class GarminQProDesktopApp:
                     lambda error=exc: self._finish_task_error(
                         error,
                         quiet=quiet_error,
+                        on_error=on_error,
                     ),
                 )
                 return
@@ -1301,13 +1302,26 @@ class GarminQProDesktopApp:
         self._busy = False
         on_success(result)
 
-    def _finish_task_error(self, error: Exception, *, quiet: bool) -> None:
+    def _finish_task_error(
+        self,
+        error: Exception,
+        *,
+        quiet: bool,
+        on_error: Callable[[Exception], None] | None,
+    ) -> None:
         self._busy = False
         self._refresh_connection()
-        if not quiet:
+        if on_error is not None:
+            on_error(error)
+        elif not quiet:
             self._show_safe_error("No se pudo completar la operación", error)
         else:
             self.status_var.set("Preparado")
+
+    def _show_garmin_login_error(self, error: Exception) -> None:
+        diagnostic = diagnose_login_error(error)
+        self.status_var.set(diagnostic.title)
+        GarminDiagnosticDialog(self.root, diagnostic).show()
 
     def _show_safe_error(self, title: str, _error: Exception) -> None:
         messagebox.showerror(
@@ -1407,6 +1421,14 @@ def create_root() -> tk.Tk:
 
 
 def main() -> None:
+    if "--smoke-test-garmin" in sys.argv:
+        try:
+            reader = connect_garmin(token_store=DEFAULT_TOKEN_STORE)
+            reader.list_activities(limit=1)
+        except Exception:
+            raise SystemExit(5) from None
+        raise SystemExit(0)
+
     if "--smoke-test-keyring" in sys.argv:
         from garmin_qpro.garmin.session import (
             KeyringSessionVault,
