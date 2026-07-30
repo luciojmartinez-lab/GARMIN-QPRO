@@ -54,6 +54,8 @@ class DesktopActivityView:
 class _DesktopActivityRecord:
     view: DesktopActivityView
     decoded: DecodedFit | None = field(default=None, repr=False)
+    result: ActivityConversionResult | None = field(default=None, repr=False)
+    input_path: Path | None = field(default=None, repr=False)
 
 
 def parse_drop_paths(
@@ -97,7 +99,7 @@ class DesktopActivityController:
             try:
                 sources = load_fit_sources(path)
             except Exception as exc:
-                added.append(self._append_failure(path.name, None, exc))
+                added.append(self._append_failure(path.name, None, exc, input_path=path))
                 continue
 
             for source in sources:
@@ -105,17 +107,38 @@ class DesktopActivityController:
                     decoded = decode_fit(source, verify_crc=verify_crc)
                     context = resolve_decoded_activity(decoded)
                 except Exception as exc:
-                    added.append(self._append_failure(path.name, source, exc))
+                    added.append(
+                        self._append_failure(
+                            path.name,
+                            source,
+                            exc,
+                            input_path=path,
+                        )
+                    )
                     continue
 
                 if (
                     context.resolution.qpro_key is None
                     or context.resolution.requires_user_choice
                 ):
-                    added.append(self._append_pending(path.name, decoded, context))
+                    added.append(
+                        self._append_pending(
+                            path.name,
+                            decoded,
+                            context,
+                            input_path=path,
+                        )
+                    )
                     continue
 
-                added.append(self._append_converted(path.name, decoded, context))
+                added.append(
+                    self._append_converted(
+                        path.name,
+                        decoded,
+                        context,
+                        input_path=path,
+                    )
+                )
         return tuple(added)
 
     def apply_manual_key(self, item_id: int, key: str) -> DesktopActivityView:
@@ -139,10 +162,17 @@ class DesktopActivityController:
         )
         record.view = new_view
         record.decoded = None
+        record.result = result
         return new_view
 
     def get_item(self, item_id: int) -> DesktopActivityView:
         return self._record_for_id(item_id).view
+
+    def get_result(self, item_id: int) -> ActivityConversionResult | None:
+        return self._record_for_id(item_id).result
+
+    def get_input_path(self, item_id: int) -> Path | None:
+        return self._record_for_id(item_id).input_path
 
     def tsv_for_item(self, item_id: int) -> str:
         view = self.get_item(item_id)
@@ -166,6 +196,7 @@ class DesktopActivityController:
         input_name: str,
         decoded: DecodedFit,
         context: ActivityContext,
+        input_path: Path,
     ) -> DesktopActivityView:
         try:
             result = convert_decoded_activity(decoded)
@@ -176,6 +207,7 @@ class DesktopActivityController:
                 decoded.source,
                 exc,
                 context=context,
+                input_path=input_path,
             )
 
         view = self._view_from_result(
@@ -184,7 +216,13 @@ class DesktopActivityController:
             result=result,
             context=context,
         )
-        self._records.append(_DesktopActivityRecord(view=view))
+        self._records.append(
+            _DesktopActivityRecord(
+                view=view,
+                result=result,
+                input_path=input_path,
+            )
+        )
         return view
 
     def _append_pending(
@@ -192,6 +230,7 @@ class DesktopActivityController:
         input_name: str,
         decoded: DecodedFit,
         context: ActivityContext,
+        input_path: Path,
     ) -> DesktopActivityView:
         view = DesktopActivityView(
             item_id=self._take_item_id(),
@@ -207,7 +246,13 @@ class DesktopActivityController:
             requires_manual_review=True,
             tsv=None,
         )
-        self._records.append(_DesktopActivityRecord(view=view, decoded=decoded))
+        self._records.append(
+            _DesktopActivityRecord(
+                view=view,
+                decoded=decoded,
+                input_path=input_path,
+            )
+        )
         return view
 
     def _append_failure(
@@ -217,6 +262,7 @@ class DesktopActivityController:
         error: Exception,
         *,
         context: ActivityContext | None = None,
+        input_path: Path | None = None,
     ) -> DesktopActivityView:
         view = DesktopActivityView(
             item_id=self._take_item_id(),
@@ -236,7 +282,9 @@ class DesktopActivityController:
             requires_manual_review=True,
             tsv=None,
         )
-        self._records.append(_DesktopActivityRecord(view=view))
+        self._records.append(
+            _DesktopActivityRecord(view=view, input_path=input_path)
+        )
         return view
 
     def _view_from_result(
