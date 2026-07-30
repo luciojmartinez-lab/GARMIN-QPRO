@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -15,9 +16,11 @@ from garmin_qpro.garmin.errors import (
 )
 from garmin_qpro.garmin.reader import _GarminBindings
 from garmin_qpro.garmin.session import (
+    DpapiSessionVault,
     GarminDesktopSession,
     KeyringSessionVault,
     StoredGarminSession,
+    WindowsDpapiProtector,
 )
 
 
@@ -53,6 +56,18 @@ class FakeVault:
     def clear(self) -> None:
         self.clear_count += 1
         self.stored = None
+
+
+class FakeDpapiProtector:
+    prefix = b"DPAPI-TEST\x00"
+
+    def protect(self, data: bytes) -> bytes:
+        return self.prefix + bytes(value ^ 0xA5 for value in data)
+
+    def unprotect(self, data: bytes) -> bytes:
+        if not data.startswith(self.prefix):
+            raise OSError("invalid encrypted payload")
+        return bytes(value ^ 0xA5 for value in data[len(self.prefix):])
 
 
 def _install_bindings(monkeypatch, *, login_error: Exception | None = None):
@@ -219,30 +234,88 @@ def test_security_challenge_during_restore_is_not_reported_as_invalid_tokens(
         session.restore()
 
 
-def test_keyring_vault_serializes_without_password(monkeypatch) -> None:
-    values: dict[tuple[str, str], str] = {}
-    fake_keyring = SimpleNamespace(
-        get_password=lambda service, account: values.get((service, account)),
-        set_password=lambda service, account, value: values.__setitem__(
-            (service, account), value
-        ),
-        delete_password=lambda service, account: values.pop((service, account)),
-        errors=SimpleNamespace(PasswordDeleteError=KeyError),
+def test_dpapi_vault_handles_large_sessions_without_plaintext(tmp_path) -> None:
+    path = tmp_path / "desktop-session.dpapi"
+    vault = DpapiSessionVault(
+        path=path,
+        protector=FakeDpapiProtector(),
     )
-    monkeypatch.setattr(
-        session_module.importlib,
-        "import_module",
-        lambda name: fake_keyring,
+    stored = StoredGarminSession(
+        "user@example.com",
+        "large-private-token-" * 2_000,
     )
-    vault = KeyringSessionVault()
-    stored = StoredGarminSession("user@example.com", "token-data")
 
     vault.save(stored)
 
     assert vault.load() == stored
-    assert "password" not in next(iter(values.values())).casefold()
+    encrypted = path.read_bytes()
+    assert stored.email.encode() not in encrypted
+    assert stored.token_data.encode() not in encrypted
+    assert not list(tmp_path.glob("*.tmp"))
     vault.clear()
     assert vault.load() is None
+
+
+def test_keyring_compatibility_name_uses_dpapi_vault() -> None:
+    assert KeyringSessionVault is DpapiSessionVault
+
+
+def test_dpapi_vault_rejects_corrupt_encrypted_session(tmp_path) -> None:
+    path = tmp_path / "desktop-session.dpapi"
+    path.write_bytes(b"not-dpapi")
+    vault = DpapiSessionVault(
+        path=path,
+        protector=FakeDpapiProtector(),
+    )
+
+    with pytest.raises(GarminInvalidSessionError):
+        vault.load()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DPAPI only")
+def test_windows_dpapi_round_trip_is_encrypted(tmp_path) -> None:
+    path = tmp_path / "desktop-session.dpapi"
+    vault = DpapiSessionVault(
+        path=path,
+        protector=WindowsDpapiProtector(),
+    )
+    stored = StoredGarminSession(
+        "native@example.com",
+        "native-private-token-" * 1_000,
+    )
+
+    vault.save(stored)
+
+    encrypted = path.read_bytes()
+    assert vault.load() == stored
+    assert stored.email.encode() not in encrypted
+    assert stored.token_data.encode() not in encrypted
+
+
+def test_dpapi_vault_reports_atomic_write_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    path = tmp_path / "desktop-session.dpapi"
+    vault = DpapiSessionVault(
+        path=path,
+        protector=FakeDpapiProtector(),
+    )
+
+    def fail_replace(_source, _target) -> None:
+        raise OSError("blocked")
+
+    monkeypatch.setattr(
+        session_module.os,
+        "replace",
+        fail_replace,
+    )
+
+    with pytest.raises(GarminCredentialStoreError):
+        vault.save(StoredGarminSession("u@example.com", "token-data"))
+
+    assert not path.exists()
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_session_does_not_emit_credentials_to_logs(monkeypatch, caplog) -> None:

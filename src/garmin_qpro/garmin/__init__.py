@@ -24,13 +24,18 @@ from .reader import (
     connect_garmin,
 )
 from .session import (
+    DEFAULT_DESKTOP_SESSION_FILE,
+    DpapiSessionVault,
     GarminDesktopSession,
     KeyringSessionVault,
     StoredGarminSession,
+    WindowsDpapiProtector,
 )
 
 __all__ = [
+    "DEFAULT_DESKTOP_SESSION_FILE",
     "DEFAULT_TOKEN_STORE",
+    "DpapiSessionVault",
     "GarminActivityDownload",
     "GarminActivitySummary",
     "GarminAuthenticationError",
@@ -53,4 +58,5 @@ __all__ = [
     "GarminDesktopSession",
     "KeyringSessionVault",
     "StoredGarminSession",
+    "WindowsDpapiProtector",
 ]
