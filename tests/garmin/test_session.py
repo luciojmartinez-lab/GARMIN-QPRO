@@ -7,7 +7,11 @@ import pytest
 from garmin_qpro.garmin import session as session_module
 from garmin_qpro.garmin.errors import (
     GarminAuthenticationError,
+    GarminChallengeError,
     GarminConnectionError,
+    GarminCredentialStoreError,
+    GarminInvalidSessionError,
+    GarminRateLimitError,
 )
 from garmin_qpro.garmin.reader import _GarminBindings
 from garmin_qpro.garmin.session import (
@@ -27,6 +31,10 @@ class ExternalConnectionError(Exception):
 
 class ExternalRateLimitError(Exception):
     pass
+
+
+class ExternalAuthenticationChallengeError(ExternalAuthenticationError):
+    status_code = 403
 
 
 class FakeVault:
@@ -168,6 +176,49 @@ def test_connection_errors_never_include_tokens(monkeypatch) -> None:
     assert "secret-token" not in str(exc_info.value)
 
 
+def test_rejected_saved_tokens_have_a_specific_error(monkeypatch) -> None:
+    _observed, token_data = _install_bindings(
+        monkeypatch,
+        login_error=ExternalAuthenticationError("rejected token"),
+    )
+    session = GarminDesktopSession(
+        FakeVault(StoredGarminSession("u@example.com", token_data))
+    )
+
+    with pytest.raises(GarminInvalidSessionError):
+        session.restore()
+
+
+def test_rate_limit_during_restore_is_not_reported_as_invalid_tokens(
+    monkeypatch,
+) -> None:
+    _observed, token_data = _install_bindings(
+        monkeypatch,
+        login_error=ExternalRateLimitError("429"),
+    )
+    session = GarminDesktopSession(
+        FakeVault(StoredGarminSession("u@example.com", token_data))
+    )
+
+    with pytest.raises(GarminRateLimitError):
+        session.restore()
+
+
+def test_security_challenge_during_restore_is_not_reported_as_invalid_tokens(
+    monkeypatch,
+) -> None:
+    _observed, token_data = _install_bindings(
+        monkeypatch,
+        login_error=ExternalAuthenticationChallengeError("Cloudflare CAPTCHA"),
+    )
+    session = GarminDesktopSession(
+        FakeVault(StoredGarminSession("u@example.com", token_data))
+    )
+
+    with pytest.raises(GarminChallengeError):
+        session.restore()
+
+
 def test_keyring_vault_serializes_without_password(monkeypatch) -> None:
     values: dict[tuple[str, str], str] = {}
     fake_keyring = SimpleNamespace(
@@ -201,3 +252,40 @@ def test_session_does_not_emit_credentials_to_logs(monkeypatch, caplog) -> None:
     session.connect(email="u@example.com", password="private-password")
 
     assert "private-password" not in caplog.text
+
+
+def test_token_dump_failure_is_reported_as_credential_store_error(
+    monkeypatch,
+) -> None:
+    observed, _token_data = _install_bindings(monkeypatch)
+    vault = FakeVault()
+    session = GarminDesktopSession(vault)
+
+    class BrokenClient:
+        def dumps(self):
+            raise OSError("private-token")
+
+    original_garmin = session_module._load_garmin_bindings
+    bindings = original_garmin()
+    original_type = bindings.Garmin
+
+    class BrokenGarmin(original_type):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.client = BrokenClient()
+
+    monkeypatch.setattr(
+        session_module,
+        "_load_garmin_bindings",
+        lambda: type(bindings)(
+            Garmin=BrokenGarmin,
+            authentication_error=bindings.authentication_error,
+            connection_error=bindings.connection_error,
+            too_many_requests_error=bindings.too_many_requests_error,
+        ),
+    )
+
+    with pytest.raises(GarminCredentialStoreError):
+        session.connect(email="u@example.com", password="private-password")
+
+    assert observed["password"] == "private-password"

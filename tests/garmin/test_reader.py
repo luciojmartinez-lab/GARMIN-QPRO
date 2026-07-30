@@ -11,6 +11,7 @@ import garmin_qpro
 from garmin_qpro.garmin import reader as reader_module
 from garmin_qpro.garmin.errors import (
     GarminAuthenticationError,
+    GarminChallengeError,
     GarminConnectionError,
     GarminIntegrationUnavailableError,
     GarminResponseError,
@@ -37,6 +38,14 @@ class ExternalConnectionError(Exception):
 
 class ExternalRateLimitError(Exception):
     pass
+
+
+class ExternalAuthenticationChallengeError(ExternalAuthenticationError):
+    status_code = 403
+
+
+class ExternalUnauthorizedError(ExternalConnectionError):
+    status_code = 401
 
 
 class FakeGarminType:
@@ -233,6 +242,26 @@ def test_remote_errors_are_translated_safely(
     assert message in str(exc_info.value)
     assert "secret" not in str(exc_info.value)
     assert exc_info.value.__cause__ is external_error
+
+
+def test_security_challenge_precedes_authentication_classification() -> None:
+    error = ExternalAuthenticationChallengeError("Cloudflare CAPTCHA cookie=secret")
+
+    with pytest.raises(GarminChallengeError) as exc_info:
+        _reader(FakeClient(error=error)).list_activities()
+
+    assert "secret" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is error
+
+
+def test_http_401_is_classified_as_rejected_credentials() -> None:
+    error = ExternalUnauthorizedError("password=secret")
+
+    with pytest.raises(GarminAuthenticationError) as exc_info:
+        _reader(FakeClient(error=error)).list_activities()
+
+    assert "secret" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is error
 
 
 def test_reader_has_no_remote_write_methods() -> None:
