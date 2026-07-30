@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import tkinter as tk
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -747,7 +747,7 @@ class GarminQProDesktopApp:
         ).grid(row=1, column=0, padx=16, pady=(0, 6), sticky="ew")
         ctk.CTkLabel(
             storage_card,
-            text="23 columnas QPro · sesión en el almacén seguro de Windows",
+            text="23 columnas QPro · sesión local cifrada con Windows DPAPI",
             text_color=MUTED,
             font=(FONT, 9),
             anchor="w",
@@ -1429,34 +1429,63 @@ def main() -> None:
             raise SystemExit(5) from None
         raise SystemExit(0)
 
-    if "--smoke-test-keyring" in sys.argv:
+    if (
+        "--smoke-test-dpapi" in sys.argv
+        or "--smoke-test-keyring" in sys.argv
+    ):
         from garmin_qpro.garmin.session import (
-            KeyringSessionVault,
+            DpapiSessionVault,
             StoredGarminSession,
         )
 
-        vault = KeyringSessionVault(
-            service=f"GARMIN-QPRO-SMOKE-{os.getpid()}",
-            account="temporary-session",
-        )
-        saved = False
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "session.dpapi"
+            vault = DpapiSessionVault(path=path)
+            saved = False
+            try:
+                expected = StoredGarminSession(
+                    email="smoke-test@example.invalid",
+                    token_data="temporary-token-" * 2_000,
+                )
+                vault.save(expected)
+                saved = True
+                encrypted = path.read_bytes()
+                valid = (
+                    vault.load() == expected
+                    and expected.email.encode() not in encrypted
+                    and expected.token_data.encode() not in encrypted
+                )
+            except Exception:
+                valid = False
+            finally:
+                if saved:
+                    try:
+                        vault.clear()
+                    except Exception:
+                        valid = False
+        raise SystemExit(0 if valid else 4)
+
+    if "--smoke-test-diagnostic-dialog" in sys.argv:
+        root = create_root()
+        root.withdraw()
+        valid = False
         try:
-            expected = StoredGarminSession(
-                email="smoke-test@example.invalid",
-                token_data="temporary-token",
+            root.attributes("-alpha", 0.55)
+            dialog = GarminDiagnosticDialog(
+                root,
+                diagnose_login_error(RuntimeError("smoke test")),
             )
-            vault.save(expected)
-            saved = True
-            valid = vault.load() == expected
+            root.after(100, dialog.close_button.invoke)
+            dialog.show()
+            valid = (
+                abs(float(root.attributes("-alpha")) - 1.0) < 0.001
+                and root.grab_current() is None
+            )
         except Exception:
             valid = False
         finally:
-            if saved:
-                try:
-                    vault.clear()
-                except Exception:
-                    valid = False
-        raise SystemExit(0 if valid else 4)
+            root.destroy()
+        raise SystemExit(0 if valid else 6)
 
     root = create_root()
     if "--smoke-test-dnd" in sys.argv:

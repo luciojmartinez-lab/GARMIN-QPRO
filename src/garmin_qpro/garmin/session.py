@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-import importlib
+import ctypes
 import json
+import os
 import sys
+import tempfile
 from collections.abc import Callable
+from ctypes import wintypes
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from .errors import (
@@ -23,8 +27,11 @@ from .reader import (
     _raise_remote_error,
 )
 
-KEYRING_SERVICE = "GARMIN-QPRO"
-KEYRING_ACCOUNT = "garmin-connect-session"
+DEFAULT_DESKTOP_SESSION_FILE = (
+    Path.home() / ".garmin-qpro" / "desktop-session.dpapi"
+)
+_DPAPI_DESCRIPTION = "GARMIN-QPRO Garmin session"
+_CRYPTPROTECT_UI_FORBIDDEN = 0x1
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,48 +48,141 @@ class SessionVault(Protocol):
     def clear(self) -> None: ...
 
 
-class KeyringSessionVault:
-    """Store Garmin tokens in the OS credential vault, never in the repository."""
+class DpapiProtector(Protocol):
+    def protect(self, data: bytes) -> bytes: ...
 
-    __slots__ = ("account", "service")
+    def unprotect(self, data: bytes) -> bytes: ...
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [
+        ("cbData", wintypes.DWORD),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+
+
+def _input_blob(data: bytes) -> tuple[_DataBlob, ctypes.Array]:
+    buffer = ctypes.create_string_buffer(data, len(data))
+    blob = _DataBlob(
+        len(data),
+        ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    return blob, buffer
+
+
+class WindowsDpapiProtector:
+    """Encrypt bytes for the current Windows user with native DPAPI."""
+
+    __slots__ = ()
+
+    @staticmethod
+    def _libraries() -> tuple[object, object]:
+        if sys.platform != "win32":
+            raise GarminIntegrationUnavailableError(
+                "Windows DPAPI session storage is unavailable"
+            )
+        crypt32 = ctypes.WinDLL("Crypt32.dll", use_last_error=True)
+        kernel32 = ctypes.WinDLL("Kernel32.dll", use_last_error=True)
+        crypt32.CryptProtectData.argtypes = [
+            ctypes.POINTER(_DataBlob),
+            wintypes.LPCWSTR,
+            ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(_DataBlob),
+        ]
+        crypt32.CryptProtectData.restype = wintypes.BOOL
+        crypt32.CryptUnprotectData.argtypes = [
+            ctypes.POINTER(_DataBlob),
+            ctypes.POINTER(wintypes.LPWSTR),
+            ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(_DataBlob),
+        ]
+        crypt32.CryptUnprotectData.restype = wintypes.BOOL
+        kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
+        kernel32.LocalFree.restype = wintypes.HLOCAL
+        return crypt32, kernel32
+
+    def protect(self, data: bytes) -> bytes:
+        if not isinstance(data, bytes):
+            raise TypeError("data must be bytes")
+        input_blob, input_buffer = _input_blob(data)
+        output_blob = _DataBlob()
+        crypt32, kernel32 = self._libraries()
+        if not crypt32.CryptProtectData(
+            ctypes.byref(input_blob),
+            _DPAPI_DESCRIPTION,
+            None,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
+            ctypes.byref(output_blob),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.string_at(output_blob.pbData, output_blob.cbData)
+        finally:
+            kernel32.LocalFree(output_blob.pbData)
+
+    def unprotect(self, data: bytes) -> bytes:
+        if not isinstance(data, bytes):
+            raise TypeError("data must be bytes")
+        input_blob, input_buffer = _input_blob(data)
+        output_blob = _DataBlob()
+        crypt32, kernel32 = self._libraries()
+        if not crypt32.CryptUnprotectData(
+            ctypes.byref(input_blob),
+            None,
+            None,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
+            ctypes.byref(output_blob),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.string_at(output_blob.pbData, output_blob.cbData)
+        finally:
+            kernel32.LocalFree(output_blob.pbData)
+
+
+class DpapiSessionVault:
+    """Store a DPAPI-encrypted Garmin session in a local file."""
+
+    __slots__ = ("path", "protector")
 
     def __init__(
         self,
         *,
-        service: str = KEYRING_SERVICE,
-        account: str = KEYRING_ACCOUNT,
+        path: Path = DEFAULT_DESKTOP_SESSION_FILE,
+        protector: DpapiProtector | None = None,
     ) -> None:
-        self.service = service
-        self.account = account
-
-    @staticmethod
-    def _keyring() -> object:
-        try:
-            keyring = importlib.import_module("keyring")
-        except ImportError as exc:
-            raise GarminIntegrationUnavailableError(
-                'Secure session storage is unavailable; install ".[desktop]"'
-            ) from exc
-        if sys.platform == "win32" and hasattr(keyring, "set_keyring"):
-            try:
-                windows = importlib.import_module("keyring.backends.Windows")
-                keyring.set_keyring(windows.WinVaultKeyring())
-            except (AttributeError, ImportError) as exc:
-                raise GarminIntegrationUnavailableError(
-                    "Windows credential storage is unavailable"
-                ) from exc
-        return keyring
+        self.path = Path(path).expanduser()
+        self.protector = protector or WindowsDpapiProtector()
 
     def load(self) -> StoredGarminSession | None:
-        keyring = self._keyring()
         try:
-            payload = keyring.get_password(self.service, self.account)
+            encrypted = self.path.read_bytes()
+        except FileNotFoundError:
+            return None
         except Exception as exc:
             raise GarminCredentialStoreError(
-                "Windows credential storage could not be read"
+                "Encrypted Garmin session could not be read"
             ) from exc
-        if not payload:
-            return None
+        if not encrypted:
+            raise GarminInvalidSessionError(
+                "Encrypted Garmin session is empty"
+            )
+        try:
+            payload = self.protector.unprotect(encrypted).decode("utf-8")
+        except Exception as exc:
+            raise GarminInvalidSessionError(
+                "Encrypted Garmin session could not be decrypted"
+            ) from exc
         try:
             parsed = json.loads(payload)
             email = parsed["email"]
@@ -102,30 +202,54 @@ class KeyringSessionVault:
             {"email": session.email, "token_data": session.token_data},
             ensure_ascii=True,
             separators=(",", ":"),
-        )
-        keyring = self._keyring()
+        ).encode("utf-8")
         try:
-            keyring.set_password(self.service, self.account, payload)
+            encrypted = self.protector.protect(payload)
         except Exception as exc:
             raise GarminCredentialStoreError(
-                "Windows credential storage could not save the Garmin session"
+                "Garmin session could not be encrypted"
             ) from exc
+        if not encrypted:
+            raise GarminCredentialStoreError(
+                "Windows DPAPI returned an empty Garmin session"
+            )
+        temporary_path: Path | None = None
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            file_descriptor, temporary_name = tempfile.mkstemp(
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+            )
+            temporary_path = Path(temporary_name)
+            with os.fdopen(file_descriptor, "wb") as handle:
+                handle.write(encrypted)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, self.path)
+            temporary_path = None
+        except Exception as exc:
+            raise GarminCredentialStoreError(
+                "Encrypted Garmin session could not be saved"
+            ) from exc
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def clear(self) -> None:
-        keyring = self._keyring()
         try:
-            keyring.delete_password(self.service, self.account)
+            self.path.unlink(missing_ok=True)
         except Exception as exc:
-            not_found = getattr(
-                getattr(keyring, "errors", object()),
-                "PasswordDeleteError",
-                (),
-            )
-            if not_found and isinstance(exc, not_found):
-                return
             raise GarminCredentialStoreError(
-                "Windows credential storage could not clear the Garmin session"
+                "Encrypted Garmin session could not be cleared"
             ) from exc
+
+
+# Compatibility name for callers of the desktop API. It no longer uses keyring.
+KeyringSessionVault = DpapiSessionVault
 
 
 class GarminDesktopSession:
@@ -134,7 +258,7 @@ class GarminDesktopSession:
     __slots__ = ("_client", "_reader", "_vault", "email")
 
     def __init__(self, vault: SessionVault | None = None) -> None:
-        self._vault = vault or KeyringSessionVault()
+        self._vault = vault or DpapiSessionVault()
         self._client: object | None = None
         self._reader: GarminConnectReader | None = None
         self.email: str | None = None

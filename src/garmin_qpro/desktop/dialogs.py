@@ -249,6 +249,12 @@ class GarminDiagnosticDialog:
         parent: tk.Misc,
         diagnostic: GarminLoginDiagnostic,
     ) -> None:
+        self.parent = parent
+        self._closed = False
+        try:
+            self._parent_state = parent.state()
+        except (AttributeError, tk.TclError):
+            self._parent_state = None
         self.window = ctk.CTkToplevel(parent)
         self.window.title(diagnostic.title)
         self.window.geometry("660x430")
@@ -256,6 +262,7 @@ class GarminDiagnosticDialog:
         self.window.configure(fg_color=BACKGROUND)
         self.window.transient(parent)
         self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -329,15 +336,53 @@ class GarminDiagnosticDialog:
 
         copy_button.configure(command=copy_diagnostic)
         copy_button.grid(row=0, column=0, padx=(0, 8))
-        ctk.CTkButton(
+        self.close_button = ctk.CTkButton(
             buttons,
             text="Cerrar",
             width=100,
             fg_color=BLUE,
             hover_color=BLUE_DARK,
-            command=self.window.destroy,
-        ).grid(row=0, column=1)
-        self.window.bind("<Escape>", lambda _event: self.window.destroy())
+            command=self.close,
+        )
+        self.close_button.grid(row=0, column=1)
+        self.window.bind("<Escape>", self._handle_escape)
 
     def show(self) -> None:
-        self.window.wait_window()
+        try:
+            self.window.wait_window()
+        finally:
+            self.close()
+
+    def _handle_escape(self, _event: object | None = None) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            try:
+                if self.window.grab_current() is self.window:
+                    self.window.grab_release()
+            except (AttributeError, tk.TclError):
+                pass
+            try:
+                if self.window.winfo_exists():
+                    self.window.destroy()
+            except (AttributeError, tk.TclError):
+                pass
+        finally:
+            self._restore_parent()
+
+    def _restore_parent(self) -> None:
+        try:
+            if self._parent_state is not None:
+                self.parent.state(self._parent_state)
+        except (AttributeError, tk.TclError):
+            pass
+        finally:
+            try:
+                self.parent.attributes("-alpha", 1.0)
+                self.parent.update_idletasks()
+            except (AttributeError, tk.TclError):
+                pass

@@ -115,9 +115,9 @@ _COPY = {
         "Actualiza GARMIN-QPRO o reconstruye el ejecutable con sus dependencias de escritorio.",
     ),
     GarminLoginIssue.CREDENTIAL_STORE: (
-        "No se pudo guardar la sesión",
-        "La conexión pudo iniciarse, pero Windows no pudo proteger la sesión reutilizable.",
-        "Comprueba el Administrador de credenciales de Windows y vuelve a conectar.",
+        "Problema con la sesión protegida",
+        "Windows no pudo leer, guardar o eliminar la sesión local cifrada.",
+        "Comprueba que tu perfil de Windows permite guardar archivos locales protegidos y vuelve a conectar.",
     ),
     GarminLoginIssue.INVALID_SESSION: (
         "Sesión guardada no válida",
