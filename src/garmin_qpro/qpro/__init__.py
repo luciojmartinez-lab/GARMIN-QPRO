@@ -33,6 +33,12 @@ from .schema import (
     TEXT_FIELDS,
 )
 from .tsv import row_to_tsv, rows_to_tsv
+from .training_load import (
+    QPRO_COLUMNS_WITH_TRAINING_LOAD,
+    TRAINING_LOAD_COLUMNS,
+    QProRowWithTrainingLoad,
+    enrich_qpro_row_with_training_load,
+)
 
 __all__ = [
     "CURRENT_ROW_HINTS",
@@ -42,10 +48,13 @@ __all__ = [
     "QPRO_COLUMN_COUNT",
     "QPRO_COLUMN_INDEX",
     "QPRO_COLUMNS",
+    "QPRO_COLUMNS_WITH_TRAINING_LOAD",
     "RUNNING_KEYS",
     "TEXT_FIELDS",
     "QProFamily",
     "QProRow",
+    "QProRowWithTrainingLoad",
+    "TRAINING_LOAD_COLUMNS",
     "UnknownQProColumnError",
     "UnknownQProKeyError",
     "build_vmax_ms_formula",
@@ -54,6 +63,7 @@ __all__ = [
     "build_force_metrics_row",
     "build_running_row",
     "empty_or_formatted",
+    "enrich_qpro_row_with_training_load",
     "family_for_key",
     "format_decimal",
     "format_text_decimal",
