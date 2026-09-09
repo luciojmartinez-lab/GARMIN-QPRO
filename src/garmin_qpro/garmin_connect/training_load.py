@@ -45,16 +45,27 @@ class GarminPyResponseError(TrainingLoadAdapterError):
 
 @dataclass(frozen=True, slots=True)
 class HistoricalTrainingLoad:
-    """Acute and chronic load reported by Garmin for one calendar date."""
+    """Historical training state reported by Garmin for one calendar date."""
 
     date: date
     acute_load: float | None
     chronic_load: float | None
+    acwr: float | None
+    training_status: str | None
+    load_tunnel_min: float | None
+    load_tunnel_max: float | None
+    load_balance_status: str | None
 
     def __post_init__(self) -> None:
         if type(self.date) is not date:
             raise TypeError("date must be a date")
-        for field_name in ("acute_load", "chronic_load"):
+        for field_name in (
+            "acute_load",
+            "chronic_load",
+            "acwr",
+            "load_tunnel_min",
+            "load_tunnel_max",
+        ):
             value = getattr(self, field_name)
             if value is None:
                 continue
@@ -66,6 +77,10 @@ class HistoricalTrainingLoad:
                     f"{field_name} must be finite and non-negative"
                 )
             object.__setattr__(self, field_name, parsed)
+        for field_name in ("training_status", "load_balance_status"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"{field_name} must be text or None")
 
 
 CommandResult = subprocess.CompletedProcess[str]
@@ -99,6 +114,16 @@ def _load_value(value: Any, field_name: str) -> float | None:
             f"garmin-py returned an invalid {field_name}"
         )
     return parsed
+
+
+def _text_value(value: Any, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GarminPyResponseError(
+            f"garmin-py returned an invalid {field_name}"
+        )
+    return value
 
 
 class GarminPyTrainingLoadAdapter:
@@ -214,7 +239,9 @@ class GarminPyTrainingLoadAdapter:
                 "garmin-py returned invalid training-load data"
             )
         if not data:
-            return HistoricalTrainingLoad(requested_day, None, None)
+            raise GarminPyResponseError(
+                "garmin-py did not return a row for the requested date"
+            )
 
         matching_rows: list[Mapping[str, Any]] = []
         for item in data:
@@ -235,5 +262,22 @@ class GarminPyTrainingLoadAdapter:
             chronic_load=_load_value(
                 row.get("chronic_load"),
                 "chronic_load",
+            ),
+            acwr=_load_value(row.get("acwr"), "acwr"),
+            training_status=_text_value(
+                row.get("training_status"),
+                "training_status",
+            ),
+            load_tunnel_min=_load_value(
+                row.get("load_tunnel_min"),
+                "load_tunnel_min",
+            ),
+            load_tunnel_max=_load_value(
+                row.get("load_tunnel_max"),
+                "load_tunnel_max",
+            ),
+            load_balance_status=_text_value(
+                row.get("load_balance_status"),
+                "load_balance_status",
             ),
         )

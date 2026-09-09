@@ -25,7 +25,17 @@ def _result(payload, *, returncode: int = 0):
     )
 
 
-def _success(day: str, acute=964, chronic=772):
+def _success(
+    day: str,
+    acute=964,
+    chronic=772,
+    *,
+    acwr=1.2,
+    training_status="PRODUCTIVE_2",
+    load_tunnel_min=617.6,
+    load_tunnel_max=1158.0,
+    load_balance_status="BALANCED",
+):
     return {
         "ok": True,
         "command": "health status",
@@ -35,9 +45,37 @@ def _success(day: str, acute=964, chronic=772):
                 "date": day,
                 "acute_load": acute,
                 "chronic_load": chronic,
+                "acwr": acwr,
+                "training_status": training_status,
+                "load_tunnel_min": load_tunnel_min,
+                "load_tunnel_max": load_tunnel_max,
+                "load_balance_status": load_balance_status,
             }
         ],
     }
+
+
+def _load(
+    day: date,
+    acute=964,
+    chronic=772,
+    *,
+    acwr=1.2,
+    training_status="PRODUCTIVE_2",
+    load_tunnel_min=617.6,
+    load_tunnel_max=1158.0,
+    load_balance_status="BALANCED",
+) -> HistoricalTrainingLoad:
+    return HistoricalTrainingLoad(
+        date=day,
+        acute_load=acute,
+        chronic_load=chronic,
+        acwr=acwr,
+        training_status=training_status,
+        load_tunnel_min=load_tunnel_min,
+        load_tunnel_max=load_tunnel_max,
+        load_balance_status=load_balance_status,
+    )
 
 
 def test_queries_garmin_py_public_json_contract_without_shell() -> None:
@@ -51,7 +89,7 @@ def test_queries_garmin_py_public_json_contract_without_shell() -> None:
         date(2026, 9, 9)
     )
 
-    assert load == HistoricalTrainingLoad(date(2026, 9, 9), 964.0, 772.0)
+    assert load == _load(date(2026, 9, 9))
     arguments, kwargs = calls[0]
     assert arguments == (
         "garmin-cli",
@@ -87,19 +125,29 @@ def test_supports_explicit_isolated_command_prefix() -> None:
 
 
 def test_result_is_immutable_and_discards_unrelated_payload_fields() -> None:
-    result = HistoricalTrainingLoad(date(2026, 9, 9), 12, 34)
+    result = _load(date(2026, 9, 9), 12, 34)
 
     with pytest.raises(FrozenInstanceError):
         result.acute_load = 1  # type: ignore[misc]
     assert not hasattr(result, "coordinates")
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "acute_load",
+        "chronic_load",
+        "acwr",
+        "load_tunnel_min",
+        "load_tunnel_max",
+    ],
+)
 @pytest.mark.parametrize("value", [True, "10", -1, float("nan"), float("inf")])
-def test_rejects_invalid_load_values(value) -> None:
+def test_rejects_invalid_numeric_values(field_name, value) -> None:
+    payload = _success("2026-09-09")
+    payload["data"][0][field_name] = value
     adapter = GarminPyTrainingLoadAdapter(
-        _runner=lambda *_args, **_kwargs: _result(
-            _success("2026-09-09", acute=value)
-        )
+        _runner=lambda *_args, **_kwargs: _result(payload)
     )
 
     with pytest.raises(GarminPyResponseError):
@@ -113,20 +161,101 @@ def test_preserves_zero_and_missing_loads() -> None:
         )
     )
 
-    assert adapter.get_for_date(date(2026, 9, 9)) == HistoricalTrainingLoad(
+    assert adapter.get_for_date(date(2026, 9, 9)) == _load(
         date(2026, 9, 9), 0.0, None
     )
 
 
-def test_empty_daily_result_returns_explicit_missing_loads() -> None:
+def test_empty_daily_result_is_not_silently_converted_to_missing_loads() -> None:
     adapter = GarminPyTrainingLoadAdapter(
         _runner=lambda *_args, **_kwargs: _result(
             {"ok": True, "data": []}
         )
     )
 
-    assert adapter.get_for_date(date(2026, 9, 9)) == HistoricalTrainingLoad(
-        date(2026, 9, 9), None, None
+    with pytest.raises(GarminPyResponseError, match="requested date"):
+        adapter.get_for_date(date(2026, 9, 9))
+
+
+def test_matching_date_is_selected_from_multiple_rows() -> None:
+    payload = _success("2026-09-09", acute=20, chronic=30)
+    payload["data"].insert(0, _success("2026-09-08")["data"][0])
+    adapter = GarminPyTrainingLoadAdapter(
+        _runner=lambda *_args, **_kwargs: _result(payload)
+    )
+
+    assert adapter.get_for_date(date(2026, 9, 9)) == _load(
+        date(2026, 9, 9), 20, 30
+    )
+
+
+def test_single_matching_row_may_have_all_optional_fields_missing() -> None:
+    adapter = GarminPyTrainingLoadAdapter(
+        _runner=lambda *_args, **_kwargs: _result(
+            {"ok": True, "data": [{"date": "2026-09-09"}]}
+        )
+    )
+
+    assert adapter.get_for_date(date(2026, 9, 9)) == _load(
+        date(2026, 9, 9),
+        None,
+        None,
+        acwr=None,
+        training_status=None,
+        load_tunnel_min=None,
+        load_tunnel_max=None,
+        load_balance_status=None,
+    )
+
+
+@pytest.mark.parametrize("field_name", ["training_status", "load_balance_status"])
+@pytest.mark.parametrize("value", [True, 10, [], {}])
+def test_rejects_non_text_status_values(field_name, value) -> None:
+    payload = _success("2026-09-09")
+    payload["data"][0][field_name] = value
+    adapter = GarminPyTrainingLoadAdapter(
+        _runner=lambda *_args, **_kwargs: _result(payload)
+    )
+
+    with pytest.raises(GarminPyResponseError):
+        adapter.get_for_date(date(2026, 9, 9))
+
+
+@pytest.mark.parametrize(
+    ("day", "acute", "chronic", "acwr", "status", "minimum", "maximum"),
+    [
+        ("2026-07-05", 312, 236, 1.3, "PRODUCTIVE_2", 188.8, 354.0),
+        ("2026-07-06", 277, 239, 1.1, "PRODUCTIVE_2", 191.2, 358.5),
+        ("2026-07-07", 228, 234, 0.9, "MAINTAINING_2", 187.2, 351.0),
+    ],
+)
+def test_preserves_validated_historical_training_state(
+    day, acute, chronic, acwr, status, minimum, maximum
+) -> None:
+    adapter = GarminPyTrainingLoadAdapter(
+        _runner=lambda *_args, **_kwargs: _result(
+            _success(
+                day,
+                acute,
+                chronic,
+                acwr=acwr,
+                training_status=status,
+                load_tunnel_min=minimum,
+                load_tunnel_max=maximum,
+                load_balance_status="AEROBIC_HIGH_SHORTAGE",
+            )
+        )
+    )
+
+    assert adapter.get_for_date(date.fromisoformat(day)) == _load(
+        date.fromisoformat(day),
+        acute,
+        chronic,
+        acwr=acwr,
+        training_status=status,
+        load_tunnel_min=minimum,
+        load_tunnel_max=maximum,
+        load_balance_status="AEROBIC_HIGH_SHORTAGE",
     )
 
 
