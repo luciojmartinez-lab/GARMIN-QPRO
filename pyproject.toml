@@ -29,6 +29,7 @@ mcp = [
 ]
 
 [project.scripts]
+garmin-qpro = "garmin_qpro.cli:main"
 garmin-qpro-mcp = "garmin_qpro.mcp_server.__main__:main"
 garmin-qpro-desktop = "garmin_qpro.desktop.app:main"
 
