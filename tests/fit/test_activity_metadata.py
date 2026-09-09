@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -187,6 +188,86 @@ def test_bytes_lists_and_tuples_are_cleaned() -> None:
     assert metadata.sport_profile_name == "Carrera"
     assert metadata.sport == "running"
     assert metadata.sub_sport == "generic"
+
+
+def test_activity_local_timestamp_is_exposed_as_neutral_date() -> None:
+    metadata = extract_activity_metadata(
+        _decoded(
+            {
+                "activity": [{"local_timestamp": 1152300942}],
+                "session": [
+                    {
+                        "start_time": datetime(
+                            2026,
+                            7,
+                            6,
+                            17,
+                            35,
+                            tzinfo=timezone.utc,
+                        )
+                    }
+                ],
+            }
+        )
+    )
+
+    assert metadata.activity_date == date(2026, 7, 6)
+
+
+def test_session_local_timestamp_is_accepted_when_available() -> None:
+    metadata = extract_activity_metadata(
+        _decoded(
+            {
+                "session": [
+                    {"local_timestamp": datetime(2026, 7, 6, 19, 35)}
+                ]
+            }
+        )
+    )
+
+    assert metadata.activity_date == date(2026, 7, 6)
+
+
+def test_activity_local_timestamp_precedes_session_fallback() -> None:
+    metadata = extract_activity_metadata(
+        _decoded(
+            {
+                "activity": [
+                    {"local_timestamp": datetime(2026, 7, 6, 19, 35)}
+                ],
+                "session": [
+                    {"local_timestamp": datetime(2026, 7, 5, 19, 35)}
+                ],
+            }
+        )
+    )
+
+    assert metadata.activity_date == date(2026, 7, 6)
+
+
+@pytest.mark.parametrize("invalid", [True, "2026-07-06", float("nan"), -1])
+def test_invalid_local_timestamp_does_not_invent_a_date(invalid) -> None:
+    metadata = extract_activity_metadata(
+        _decoded(
+            {
+                "activity": [{"local_timestamp": invalid}],
+                "session": [
+                    {
+                        "start_time": datetime(
+                            2026,
+                            7,
+                            6,
+                            17,
+                            35,
+                            tzinfo=timezone.utc,
+                        )
+                    }
+                ],
+            }
+        )
+    )
+
+    assert metadata.activity_date is None
 
 
 def test_empty_decoded_messages_do_not_fail() -> None:

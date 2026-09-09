@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from garmin_qpro.conversion import (
@@ -37,6 +38,22 @@ class ActivityToQProResult:
     tsv: str
 
 
+class HistoricalTrainingLoadDateError(ValueError):
+    """Raised when training load cannot be tied to the activity's local date."""
+
+    def __init__(
+        self,
+        *,
+        activity_date: date | None,
+        training_load_date: date,
+        reason: str,
+    ) -> None:
+        self.activity_date = activity_date
+        self.training_load_date = training_load_date
+        self.reason = reason
+        super().__init__(reason)
+
+
 def _compose_final_result(
     conversion: ActivityConversionResult,
     historical_training_load: HistoricalTrainingLoad | None,
@@ -53,6 +70,24 @@ def _compose_final_result(
             chronic_load_cell="",
         )
     else:
+        if not isinstance(historical_training_load, HistoricalTrainingLoad):
+            raise TypeError(
+                "historical_training_load must be a "
+                "HistoricalTrainingLoad or None"
+            )
+        activity_date = conversion.activity_context.metadata.activity_date
+        if activity_date is None:
+            raise HistoricalTrainingLoadDateError(
+                activity_date=None,
+                training_load_date=historical_training_load.date,
+                reason="activity local date is unavailable",
+            )
+        if historical_training_load.date != activity_date:
+            raise HistoricalTrainingLoadDateError(
+                activity_date=activity_date,
+                training_load_date=historical_training_load.date,
+                reason="training load date does not match activity date",
+            )
         final_row = enrich_qpro_row_with_training_load(
             conversion.row,
             historical_training_load,

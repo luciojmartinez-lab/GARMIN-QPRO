@@ -1,5 +1,5 @@
 from dataclasses import FrozenInstanceError
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -11,6 +11,7 @@ from garmin_qpro.garmin_connect import HistoricalTrainingLoad
 from garmin_qpro.input.sources import FitSource
 from garmin_qpro.pipeline.activity_to_qpro import (
     ActivityToQProResult,
+    HistoricalTrainingLoadDateError,
     convert_decoded_activity_to_qpro,
 )
 from garmin_qpro.qpro.rows import QProFamily
@@ -42,6 +43,7 @@ def _running_session(**overrides):
         "sport_profile_name": "Carrera",
         "sport": "running",
         "sub_sport": "generic",
+        "local_timestamp": datetime(2026, 7, 6, 10, 0),
         "total_timer_time": 100.0,
         "total_moving_time": 80.0,
         "total_distance": 200.0,
@@ -71,6 +73,7 @@ def _force_session(**overrides):
         "sport_profile_name": "Fuerza",
         "sport": "training",
         "sub_sport": "strength_training",
+        "local_timestamp": datetime(2026, 7, 6, 10, 0),
         "total_timer_time": 1663.291,
         "total_elapsed_time": 1701.977,
         "avg_heart_rate": 121,
@@ -86,9 +89,11 @@ def _force_session(**overrides):
 def _historical_load(
     acute_load: float | None = 277,
     chronic_load: float | None = 239,
+    *,
+    day: date = date(2026, 7, 6),
 ) -> HistoricalTrainingLoad:
     return HistoricalTrainingLoad(
-        date=date(2026, 7, 6),
+        date=day,
         acute_load=acute_load,
         chronic_load=chronic_load,
         acwr=None,
@@ -211,6 +216,7 @@ def test_historical_load_populates_only_columns_24_and_25() -> None:
     )
 
     assert result.final_row.as_tuple()[:23] == result.base_row.as_tuple()
+    assert result.activity_context.metadata.activity_date == date(2026, 7, 6)
     assert result.final_row.get("CARGA_AGUDA") == "'277"
     assert result.final_row.get("CARGA_CRONICA") == "'239"
     _assert_final_shape(result)
@@ -227,6 +233,67 @@ def test_missing_historical_load_keeps_two_empty_columns() -> None:
     )
 
     assert result.final_row.as_tuple()[:23] == result.base_row.as_tuple()
+    assert result.final_row.as_tuple()[23:] == ("", "")
+    _assert_final_shape(result)
+
+
+def test_mismatched_historical_load_date_is_rejected() -> None:
+    decoded = _decoded(
+        {
+            "workout": [_workout("EB1 - Carrera - 1")],
+            "session": [_running_session()],
+        }
+    )
+
+    with pytest.raises(HistoricalTrainingLoadDateError) as caught:
+        convert_decoded_activity_to_qpro(
+            decoded,
+            historical_training_load=_historical_load(
+                day=date(2026, 7, 5)
+            ),
+        )
+
+    assert caught.value.activity_date == date(2026, 7, 6)
+    assert caught.value.training_load_date == date(2026, 7, 5)
+    assert caught.value.reason == (
+        "training load date does not match activity date"
+    )
+
+
+def test_historical_load_requires_a_reliable_activity_date() -> None:
+    session = _running_session()
+    session.pop("local_timestamp")
+    decoded = _decoded(
+        {
+            "workout": [_workout("EB1 - Carrera - 1")],
+            "session": [session],
+        }
+    )
+
+    with pytest.raises(HistoricalTrainingLoadDateError) as caught:
+        convert_decoded_activity_to_qpro(
+            decoded,
+            historical_training_load=_historical_load(),
+        )
+
+    assert caught.value.activity_date is None
+    assert caught.value.training_load_date == date(2026, 7, 6)
+    assert caught.value.reason == "activity local date is unavailable"
+
+
+def test_missing_activity_date_without_load_keeps_empty_load_columns() -> None:
+    session = _running_session()
+    session.pop("local_timestamp")
+    result = convert_decoded_activity_to_qpro(
+        _decoded(
+            {
+                "workout": [_workout("EB1 - Carrera - 1")],
+                "session": [session],
+            }
+        )
+    )
+
+    assert result.activity_context.metadata.activity_date is None
     assert result.final_row.as_tuple()[23:] == ("", "")
     _assert_final_shape(result)
 

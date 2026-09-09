@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from math import isfinite
 from typing import Any
 
 from garmin_qpro.fit.models import DecodedFit
@@ -22,6 +24,7 @@ class ActivityMetadata:
     sport_profile_name: str | None
     sport: str | None
     sub_sport: str | None
+    activity_date: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +68,41 @@ def _find_message_field(
             text = _clean_text(value)
             if text is not None:
                 return text
+    return None
+
+
+_FIT_LOCAL_EPOCH = datetime(1989, 12, 31)
+
+
+def _local_date_value(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if type(value) is date:
+        return value
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+    ):
+        return None
+    seconds = float(value)
+    if not isfinite(seconds) or seconds < 0:
+        return None
+    try:
+        return (_FIT_LOCAL_EPOCH + timedelta(seconds=seconds)).date()
+    except (OverflowError, ValueError):
+        return None
+
+
+def _find_activity_date(decoded: DecodedFit) -> date | None:
+    for message_type in ("activity", "session"):
+        for message in decoded.get_messages(message_type):
+            if not isinstance(message, Mapping):
+                continue
+            for key, value in message.items():
+                if str(key).casefold() != "local_timestamp":
+                    continue
+                if (activity_date := _local_date_value(value)) is not None:
+                    return activity_date
     return None
 
 
@@ -150,6 +188,7 @@ def extract_activity_metadata(decoded: DecodedFit) -> ActivityMetadata:
         sport_profile_name=sport_profile_name,
         sport=sport,
         sub_sport=sub_sport,
+        activity_date=_find_activity_date(decoded),
     )
 
 
